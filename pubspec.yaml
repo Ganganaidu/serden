@@ -50,7 +50,6 @@ dev_dependencies:
   bloc_test: ^9.1.7
   mocktail: ^1.0.4
   flutter_launcher_icons: ^0.14.3
-  flutter_native_splash: ^2.4.7
 
 flutter:
   uses-material-design: true
@@ -79,31 +78,5 @@ flutter_launcher_icons:
   web:
     generate: false
 
-# flutter pub run flutter_native_splash:create
-flutter_native_splash:
-  # The default background color (used for light theme)
-  color: "#1B2B23FF"
-  # An optional background color for dark mode
-  color_dark: "#1B2B23FF" # A common dark theme background color
-
-  # The image asset to show in the center.
-  # Make sure you have these images in your assets/ folder
-  # and that the assets folder is declared in pubspec.yaml
-  image: assets/icons/app_icon.png
-  # An optional image for dark mode
-  image_dark: assets/icons/app_icon.png
-  ios: true
-  web: true
-
-  # Android-specific options
-  android_12:
-    # On Android 12+, you can specify a separate image for the icon background.
-    image: assets/icons/app_icon.png
-    image_dark: assets/icons/app_icon.png
-    icon_background_color: "#1B2B23FF"
-    iconf_background_color_dark: "#1B2B23FF"
-
-  # To hide the status bar on the splash screen, set fullscreen to true.
-  fullscreen: true
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
