@@ -19,6 +19,10 @@ import '../../features/invoices/screens/invoice_detail_screen.dart';
 import '../../features/invoices/screens/invoice_list_screen.dart';
 import '../../features/invoices/screens/new_invoice_screen.dart';
 import '../../features/invoices/screens/record_payment_screen.dart';
+import '../../features/leads/cubit/lead_detail_cubit.dart';
+import '../../features/leads/models/lead_model.dart';
+import '../../features/leads/screens/add_lead_screen.dart';
+import '../../features/leads/screens/lead_detail_screen.dart';
 import '../../features/leads/screens/leads_screen.dart';
 import '../../features/more/screens/about_screen.dart';
 import '../../features/more/screens/account_view_screen.dart';
@@ -51,6 +55,8 @@ abstract class AppRoutes {
   static const addClient = '/clients/add';
 
   static const leads = '/leads';
+  static const leadDetail = '/leads/:id';
+  static const addLead = '/leads/add';
 
   static const more = '/more';
   static const settings = '/more/settings';
@@ -204,6 +210,30 @@ class AppRouter {
                 GoRoute(
                   path: AppRoutes.leads,
                   builder: (_, __) => const LeadsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: 'add',
+                      builder: (_, state) {
+                        final extra = state.extra as Map<String, dynamic>?;
+                        return AddLeadScreen(
+                          leadToEdit: extra?['leadToEdit'] as Lead?,
+                        );
+                      },
+                    ),
+                    GoRoute(
+                      path: ':id',
+                      builder: (_, state) {
+                        final preview = state.extra as Lead?;
+                        return BlocProvider<LeadDetailCubit>(
+                          create: (_) => Injection.createLeadDetailCubit(),
+                          child: LeadDetailScreen(
+                            id: state.pathParameters['id']!,
+                            previewLead: preview,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),

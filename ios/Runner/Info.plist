@@ -43,6 +43,18 @@
 	</array>
 	<key>NSContactsUsageDescription</key>
 	<string>Serden uses your contacts to quickly add clients from your address book.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Serden needs access to your photos to attach images to leads.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Serden needs camera access to take photos for leads.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Serden needs permission to save photos to your library.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>sms</string>
+		<string>mailto</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
