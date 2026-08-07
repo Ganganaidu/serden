@@ -8,6 +8,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../bloc/auth_bloc.dart';
 import 'widgets/auth_scaffold.dart';
+import 'widgets/forgot_password_sheet.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -76,7 +77,10 @@ class _SignInScreenState extends State<SignInScreen> {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
-              onPressed: () {},
+              onPressed: () => showForgotPasswordSheet(
+                context,
+                initialEmail: _email.text.trim(),
+              ),
               style: TextButton.styleFrom(
                 padding: EdgeInsets.zero,
                 textStyle: const TextStyle(

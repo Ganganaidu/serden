@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/onboarding_prefs.dart';
 import '../../../core/theme/app_text_styles.dart';
 
 /// Three-slide intro carousel on the dark green background.
@@ -38,6 +39,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _onCta() {
     if (_isLast) {
+      OnboardingPrefs.markSeen();
       context.go(AppRoutes.signUp);
     } else {
       _goTo(_index + 1);
@@ -178,7 +180,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                   recognizer: TapGestureRecognizer()
-                    ..onTap = () => context.go(AppRoutes.signIn),
+                    ..onTap = () {
+                      OnboardingPrefs.markSeen();
+                      context.go(AppRoutes.signIn);
+                    },
                 ),
               ],
             ),

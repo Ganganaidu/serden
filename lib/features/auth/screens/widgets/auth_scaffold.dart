@@ -21,18 +21,15 @@ class AuthScaffold extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.green800,
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: SafeArea(
-              bottom: false,
-              // The sheet below grows with the number of form fields (e.g.
-              // Sign Up has 4 fields vs Sign In's 2), which shrinks this
-              // Expanded area correspondingly. FittedBox scales the whole
-              // hero block down together if it doesn't fit, instead of
-              // overflowing — keeps it fully visible on short screens or
-              // with the keyboard open, at a slightly smaller size.
+          // Green hero — natural height; Padding gives breathing room
+          SafeArea(
+            bottom: false,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 28),
               child: Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
@@ -82,7 +79,11 @@ class AuthScaffold extends StatelessWidget {
               ),
             ),
           ),
-          _Sheet(title: title, subtitle: subtitle, children: children),
+          // Sheet fills remaining space; SingleChildScrollView inside handles
+          // content that is taller than the available area (e.g. keyboard up).
+          Expanded(
+            child: _Sheet(title: title, subtitle: subtitle, children: children),
+          ),
         ],
       ),
     );
@@ -116,9 +117,6 @@ class _Sheet extends StatelessWidget {
       ),
       child: Container(
         width: double.infinity,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.78,
-        ),
         decoration: const BoxDecoration(
           color: AppColors.sheetBg,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),

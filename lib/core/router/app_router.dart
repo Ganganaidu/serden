@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/auth/screens/onboarding_screen.dart';
+import '../utils/onboarding_prefs.dart';
 import '../../features/auth/screens/sign_in_screen.dart';
 import '../../features/auth/screens/sign_up_screen.dart';
 import '../../features/clients/cubit/client_detail_cubit.dart';
@@ -83,7 +84,7 @@ class AppRouter {
             state.matchedLocation == AppRoutes.onboarding;
 
         if (authState is AuthUnauthenticated && !isAuthRoute) {
-          return AppRoutes.onboarding;
+          return OnboardingPrefs.seen ? AppRoutes.signIn : AppRoutes.onboarding;
         }
         if (authState is AuthAuthenticated && isAuthRoute) {
           return AppRoutes.estimates;

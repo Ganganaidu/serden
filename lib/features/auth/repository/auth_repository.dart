@@ -22,6 +22,7 @@ abstract class AuthRepository {
   Future<Either<Failure, void>> signOut();
   Future<Either<Failure, UserModel>> getCurrentUser();
   Future<bool> isAuthenticated();
+  Future<Either<Failure, void>> forgotPassword(String email);
 }
 
 class AuthRepositoryImpl implements AuthRepository {
@@ -249,5 +250,28 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<bool> isAuthenticated() async {
     final token = await _storage.read(AppConstants.accessTokenKey);
     return token != null;
+  }
+
+  @override
+  Future<Either<Failure, void>> forgotPassword(String email) async {
+    AppLogger.auth('forgotPassword: requesting reset for $email');
+    if (_useMock) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      return const Right(null);
+    }
+    try {
+      await _apiClient.post(
+        '/Users/forgot-password',
+        data: {'email': email},
+      );
+      return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('forgotPassword: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
   }
 }

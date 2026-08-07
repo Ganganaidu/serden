@@ -701,8 +701,6 @@ class _HistoryPhotosSectionState extends State<_HistoryPhotosSection>
             ],
           ),
         ),
-        const SizedBox(height: 4),
-        // Use IndexedStack to avoid TabBarView height constraints
         AnimatedBuilder(
           animation: _tabController,
           builder: (context, _) {
@@ -841,15 +839,19 @@ class _PhotosTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isLoading) {
       return const Padding(
-        padding: EdgeInsets.all(32),
-        child: Center(child: CircularProgressIndicator()),
+        padding: EdgeInsets.fromLTRB(16, 24, 16, 24),
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: CircularProgressIndicator(),
+        ),
       );
     }
 
     if (error != null && photos == null) {
       return Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(error!,
                 textAlign: TextAlign.center,
@@ -865,8 +867,9 @@ class _PhotosTab extends StatelessWidget {
     final list = photos ?? [];
     if (list.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Icon(Icons.photo_library_outlined,
                 size: 32, color: AppColors.inkFaint),
@@ -884,7 +887,7 @@ class _PhotosTab extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+      padding: const EdgeInsets.fromLTRB(5, 5, 5, 5),
       child: GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
