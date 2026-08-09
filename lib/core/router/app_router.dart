@@ -25,6 +25,8 @@ import '../../features/leads/models/lead_model.dart';
 import '../../features/leads/screens/add_lead_screen.dart';
 import '../../features/leads/screens/lead_detail_screen.dart';
 import '../../features/leads/screens/leads_screen.dart';
+import '../../features/items/models/item_model.dart';
+import '../../features/items/screens/item_form_screen.dart';
 import '../../features/more/screens/about_screen.dart';
 import '../../features/more/screens/account_view_screen.dart';
 import '../../features/more/screens/company_profile_screen.dart';
@@ -60,6 +62,7 @@ abstract class AppRoutes {
   static const addLead = '/leads/add';
 
   static const more = '/more';
+  static const itemForm = '/more/items/form';
   static const settings = '/more/settings';
   static const myAccount = '/more/settings/account';
   static const accountView = '/more/account';
@@ -273,6 +276,19 @@ class AppRouter {
                     GoRoute(
                       path: 'items',
                       builder: (_, __) => const ItemsScreen(),
+                      routes: [
+                        GoRoute(
+                          path: 'form',
+                          builder: (_, state) {
+                            final extra =
+                                state.extra as Map<String, dynamic>?;
+                            return ItemFormScreen(
+                              item: extra?['item'] as Item?,
+                              proId: extra?['proId'] as int? ?? 0,
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),

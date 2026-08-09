@@ -3,6 +3,9 @@ import '../../features/auth/repository/auth_repository.dart';
 import '../../features/clients/bloc/client_bloc.dart';
 import '../../features/clients/cubit/client_detail_cubit.dart';
 import '../../features/clients/repository/client_repository.dart';
+import '../../features/items/cubit/items_cubit.dart';
+import '../../features/items/cubit/markups_cubit.dart';
+import '../../features/items/repository/item_repository.dart';
 import '../../features/leads/bloc/lead_bloc.dart';
 import '../../features/leads/cubit/lead_detail_cubit.dart';
 import '../../features/leads/repository/lead_repository.dart';
@@ -21,6 +24,7 @@ class Injection {
   static late AuthRepository _authRepository;
   static late ClientRepository _clientRepository;
   static late LeadRepository _leadRepository;
+  static late ItemRepository _itemRepository;
 
   static void init() {
     _secureStorage = SecureStorage();
@@ -32,6 +36,7 @@ class Injection {
     );
     _clientRepository = ClientRepositoryImpl(apiClient: _apiClient);
     _leadRepository = LeadRepositoryImpl(apiClient: _apiClient);
+    _itemRepository = ItemRepositoryImpl(apiClient: _apiClient);
   }
 
   static SecureStorage get secureStorage => _secureStorage;
@@ -54,4 +59,9 @@ class Injection {
 
   static LeadDetailCubit createLeadDetailCubit() =>
       LeadDetailCubit(repository: _leadRepository);
+
+  static ItemsCubit createItemsCubit() =>
+      ItemsCubit(repository: _itemRepository);
+
+  static MarkupsCubit createMarkupsCubit() => MarkupsCubit();
 }

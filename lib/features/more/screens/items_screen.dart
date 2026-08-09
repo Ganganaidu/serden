@@ -1,23 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/config/app_config.dart';
+import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_fab.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../items/cubit/items_cubit.dart';
+import '../../items/models/item_model.dart';
 
-class _Item {
-  final String name;
-  final double? price;
-  final String unit;
-  final String sub;
-
-  const _Item(this.name, this.price, this.unit, this.sub);
-}
-
-/// Saved items catalog with alphabetical index (serden-items design).
 class ItemsScreen extends StatefulWidget {
   const ItemsScreen({super.key});
 
@@ -27,51 +21,49 @@ class ItemsScreen extends StatefulWidget {
 
 class _ItemsScreenState extends State<ItemsScreen> {
   static const _letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-
-  // Real items API isn't wired up yet — show sample data only in mock
-  // mode; a real logged-in user starts with none (empty state).
-  static List<_Item> get _items =>
-      AppConfig.useMockData ? _mockItems : const [];
-
-  static const _mockItems = [
-    _Item('ADA walk-in shower with curbless tile pan', 4800, 'each', 'Labor and materials'),
-    _Item('Add electrical outlet', 185, 'each', 'Labor and materials'),
-    _Item('Additional work and notes', null, '', 'Custom scope — priced per job'),
-    _Item('Attic remodel', 95, 'sq ft', 'Labor and materials'),
-    _Item('Baseboard installation', 6.5, 'linear ft', 'Material extra'),
-    _Item('Cabinet installation', 120, 'unit', 'Labor only'),
-    _Item('Countertop — quartz, supply and install', 75, 'sq ft', 'Includes template and cutouts'),
-    _Item('Demolition and haul away', 850, 'flat', 'Per room, dump fees included'),
-    _Item('Drywall — hang, tape, and texture', 3.25, 'sq ft', 'Level 4 finish'),
-    _Item('Flooring — LVP, supply and install', 7.5, 'sq ft', 'Underlayment included'),
-    _Item('Kitchen faucet replacement', 265, 'each', 'Fixture extra'),
-    _Item('Paint — interior walls', 2.8, 'sq ft', 'Two coats, paint included'),
-    _Item('Permit fees', null, '', 'Billed at cost'),
-    _Item('Plumbing drain relocation', 1150, 'flat', 'Up to 5 ft'),
-    _Item('Tile shower surround', 2400, 'each', 'Standard tub surround, tile extra'),
-    _Item('Water heater replacement', 2450, 'each', '50-gal tank, haul away included'),
-  ];
-
   final Map<String, GlobalKey> _sectionKeys = {};
   String _search = '';
 
-  Map<String, List<_Item>> get _grouped {
+  int? get _proId {
+    final auth = context.read<AuthBloc>().state;
+    return auth is AuthAuthenticated ? auth.user.proId : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      final proId = authState.user.proId;
+      if (proId != null) context.read<ItemsCubit>().fetch(proId);
+    }
+  }
+
+  Map<String, List<Item>> _grouped(List<Item> items) {
     final q = _search.trim().toLowerCase();
-    final rows = _items
+    final filtered = items
         .where((i) =>
             q.isEmpty ||
             i.name.toLowerCase().contains(q) ||
-            i.sub.toLowerCase().contains(q))
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+            (i.description ?? '').toLowerCase().contains(q))
+        .toList();
 
-    final groups = <String, List<_Item>>{};
-    for (final item in rows) {
+    final groups = <String, List<Item>>{};
+    for (final item in filtered) {
       final letter = item.name[0].toUpperCase();
       final key = _letters.contains(letter) ? letter : '#';
       groups.putIfAbsent(key, () => []).add(item);
     }
     return groups;
+  }
+
+  void _openForm({Item? item}) {
+    final proId = _proId;
+    if (proId == null) return;
+    context.push(
+      AppRoutes.itemForm,
+      extra: {'proId': proId, if (item != null) 'item': item},
+    );
   }
 
   void _jumpTo(String letter) {
@@ -92,115 +84,175 @@ class _ItemsScreenState extends State<ItemsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final groups = _grouped;
-    _sectionKeys.clear();
-    for (final letter in groups.keys) {
-      _sectionKeys[letter] = GlobalKey();
-    }
+    return BlocBuilder<ItemsCubit, ItemsState>(
+      builder: (context, state) {
+        final items = state is ItemsLoaded ? state.items : <Item>[];
+        final groups = _grouped(items);
 
-    return Scaffold(
-      body: Column(
-        children: [
-          Container(
-            color: AppColors.green800,
-            padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top + 6,
-              left: 20,
-              right: 20,
-              bottom: 18,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                InkWell(
-                  onTap: () => context.pop(),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(Icons.arrow_back_ios_new,
-                            size: 14, color: Color(0xCCFFFFFF)),
-                        SizedBox(width: 4),
-                        Text(
-                          'More',
-                          style: TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xCCFFFFFF),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+        _sectionKeys.clear();
+        for (final letter in groups.keys) {
+          _sectionKeys[letter] = GlobalKey();
+        }
+
+        return Scaffold(
+          body: Column(
+            children: [
+              Container(
+                color: AppColors.green800,
+                padding: EdgeInsets.only(
+                  top: MediaQuery.of(context).padding.top + 6,
+                  left: 20,
+                  right: 20,
+                  bottom: 18,
                 ),
-                const SizedBox(height: 4),
-                const Text('Items', style: AppTextStyles.headerTitle),
-                const SizedBox(height: 3),
-                Text(
-                  '${_items.length} saved items · drop them into any estimate or invoice',
-                  style: AppTextStyles.headerSubtitle,
-                ),
-                HeaderSearchBar(
-                  hint: 'Search your saved items',
-                  onChanged: (v) => setState(() => _search = v),
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Stack(
-              children: [
-                if (groups.isEmpty)
-                  const EmptyState(
-                    title: 'No matches',
-                    description:
-                        'Try a different name — or add it as a new item.',
-                  )
-                else
-                  ListView(
-                    padding: const EdgeInsets.only(right: 34, bottom: 96),
-                    children: [
-                      for (final entry in groups.entries) ...[
-                        Padding(
-                          key: _sectionKeys[entry.key],
-                          padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
-                          child: Text(
-                            entry.key,
-                            style: const TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.inkSoft,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InkWell(
+                      onTap: () => context.pop(),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.arrow_back_ios_new,
+                                size: 14, color: Color(0xCCFFFFFF)),
+                            SizedBox(width: 4),
+                            Text(
+                              'More',
+                              style: TextStyle(
+                                fontFamily: AppTextStyles.fontFamily,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xCCFFFFFF),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
-                        for (final item in entry.value) _row(item),
-                      ],
-                    ],
-                  ),
-                Positioned(
-                  right: 4,
-                  top: 10,
-                  bottom: 10,
-                  child: _indexBar(groups.keys.toSet()),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text('Items', style: AppTextStyles.headerTitle),
+                    const SizedBox(height: 3),
+                    Text(
+                      state is ItemsLoaded
+                          ? '${items.length} saved ${items.length == 1 ? 'item' : 'items'} · drop them into any estimate or invoice'
+                          : 'Your saved catalog items',
+                      style: AppTextStyles.headerSubtitle,
+                    ),
+                    HeaderSearchBar(
+                      hint: 'Search your saved items',
+                      onChanged: (v) => setState(() => _search = v),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              Expanded(
+                child: _body(context, state, groups, items),
+              ),
+            ],
           ),
-        ],
-      ),
-      floatingActionButton: AppFab(label: 'New item', onPressed: () {}),
+          floatingActionButton: AppFab(
+            label: 'New item',
+            onPressed: () => _openForm(),
+          ),
+        );
+      },
     );
   }
 
-  Widget _row(_Item item) {
+  Widget _body(
+    BuildContext context,
+    ItemsState state,
+    Map<String, List<Item>> groups,
+    List<Item> items,
+  ) {
+    if (state is ItemsLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (state is ItemsError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                state.message,
+                textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMedium
+                    .copyWith(color: AppColors.inkSoft),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  final proId = _proId;
+                  if (proId != null) context.read<ItemsCubit>().fetch(proId);
+                },
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (state is ItemsLoaded && items.isEmpty) {
+      return const EmptyState(
+        title: 'No items yet',
+        description:
+            'Add reusable items to your catalog — descriptions, prices, and units — then drop them into any estimate or invoice.',
+        icon: Icons.inventory_2_outlined,
+      );
+    }
+
+    if (groups.isEmpty) {
+      return const EmptyState(
+        title: 'No matches',
+        description: 'Try a different search term.',
+      );
+    }
+
+    return Stack(
+      children: [
+        ListView(
+          padding: const EdgeInsets.only(right: 34, bottom: 96),
+          children: [
+            for (final entry in groups.entries) ...[
+              Padding(
+                key: _sectionKeys[entry.key],
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+                child: Text(
+                  entry.key,
+                  style: const TextStyle(
+                    fontFamily: AppTextStyles.fontFamily,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.inkSoft,
+                  ),
+                ),
+              ),
+              for (final item in entry.value) _row(context, item),
+            ],
+          ],
+        ),
+        Positioned(
+          right: 4,
+          top: 10,
+          bottom: 10,
+          child: _indexBar(groups.keys.toSet()),
+        ),
+      ],
+    );
+  }
+
+  Widget _row(BuildContext context, Item item) {
     return Material(
       color: AppColors.card,
       child: InkWell(
-        onTap: () {},
+        onTap: () => _openForm(item: item),
         child: Container(
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: AppColors.line)),
@@ -217,29 +269,31 @@ class _ItemsScreenState extends State<ItemsScreen> {
                       style: AppTextStyles.rowTitle
                           .copyWith(fontSize: 14.5, height: 1.35),
                     ),
-                    if (item.sub.isNotEmpty) ...[
+                    if ((item.description ?? '').isNotEmpty) ...[
                       const SizedBox(height: 2),
-                      Text(item.sub,
-                          style:
-                              AppTextStyles.caption.copyWith(fontSize: 12)),
+                      Text(
+                        item.description!,
+                        style: AppTextStyles.caption.copyWith(fontSize: 12),
+                      ),
                     ],
                   ],
                 ),
               ),
               const SizedBox(width: 12),
-              if (item.price != null)
+              if (item.unitPrice != null)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      _money(item.price!),
+                      _money(item.unitPrice!),
                       style: AppTextStyles.rowAmount.copyWith(fontSize: 14.5),
                     ),
-                    Text(
-                      '/ ${item.unit}',
-                      style: AppTextStyles.caption.copyWith(
-                          fontSize: 11.5, fontWeight: FontWeight.w600),
-                    ),
+                    if ((item.unit ?? '').isNotEmpty)
+                      Text(
+                        '/ ${item.unit}',
+                        style: AppTextStyles.caption.copyWith(
+                            fontSize: 11.5, fontWeight: FontWeight.w600),
+                      ),
                   ],
                 )
               else
@@ -248,6 +302,9 @@ class _ItemsScreenState extends State<ItemsScreen> {
                   style: AppTextStyles.caption
                       .copyWith(fontSize: 12.5, fontWeight: FontWeight.w700),
                 ),
+              const SizedBox(width: 4),
+              const Icon(Icons.chevron_right,
+                  size: 18, color: AppColors.inkFaint),
             ],
           ),
         ),
