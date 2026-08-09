@@ -257,7 +257,7 @@ class _ItemsScreenState extends State<ItemsScreen> {
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: AppColors.line)),
           ),
-          padding: const EdgeInsets.fromLTRB(20, 13, 16, 13),
+          padding: const EdgeInsets.fromLTRB(20, 20, 16, 18),
           child: Row(
             children: [
               Expanded(
