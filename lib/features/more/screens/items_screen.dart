@@ -22,7 +22,9 @@ class ItemsScreen extends StatefulWidget {
 class _ItemsScreenState extends State<ItemsScreen> {
   static const _letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   final Map<String, GlobalKey> _sectionKeys = {};
+  final GlobalKey _indexBarKey = GlobalKey();
   String _search = '';
+  String? _draggingLetter;
 
   int? get _proId {
     final auth = context.read<AuthBloc>().state;
@@ -66,14 +68,31 @@ class _ItemsScreenState extends State<ItemsScreen> {
     );
   }
 
-  void _jumpTo(String letter) {
+  void _jumpTo(String letter, {bool animate = true}) {
     final key = _sectionKeys[letter];
     if (key?.currentContext != null) {
       Scrollable.ensureVisible(
         key!.currentContext!,
-        duration: const Duration(milliseconds: 300),
+        duration: animate ? const Duration(milliseconds: 300) : Duration.zero,
         curve: Curves.easeOutCubic,
       );
+    }
+  }
+
+  void _handleIndexDrag(Offset globalPosition) {
+    final box =
+        _indexBarKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final local = box.globalToLocal(globalPosition);
+    final fraction = (local.dy / box.size.height).clamp(0.0, 1.0);
+    final idx =
+        (fraction * _letters.length).floor().clamp(0, _letters.length - 1);
+    final letter = _letters[idx];
+    if (letter != _draggingLetter) {
+      setState(() => _draggingLetter = letter);
+      if (_sectionKeys.containsKey(letter)) {
+        _jumpTo(letter, animate: false);
+      }
     }
   }
 
@@ -244,9 +263,39 @@ class _ItemsScreenState extends State<ItemsScreen> {
           bottom: 10,
           child: _indexBar(groups.keys.toSet()),
         ),
+        if (_draggingLetter != null)
+          Positioned(
+            right: 44,
+            top: 0,
+            bottom: 0,
+            child: IgnorePointer(
+              child: Center(
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: AppColors.green800,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _draggingLetter!,
+                      style: const TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
+
 
   Widget _row(BuildContext context, Item item) {
     return Material(
@@ -313,29 +362,37 @@ class _ItemsScreenState extends State<ItemsScreen> {
   }
 
   Widget _indexBar(Set<String> available) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (final letter in _letters.split(''))
-          GestureDetector(
-            onTap: available.contains(letter) ? () => _jumpTo(letter) : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              child: Text(
-                letter,
-                style: TextStyle(
-                  fontFamily: AppTextStyles.fontFamily,
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w800,
-                  height: 1.35,
-                  color: available.contains(letter)
-                      ? AppColors.greenDeep
-                      : const Color(0xFFC9CFC9),
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onPanStart: (d) => _handleIndexDrag(d.globalPosition),
+      onPanUpdate: (d) => _handleIndexDrag(d.globalPosition),
+      onPanEnd: (_) => setState(() => _draggingLetter = null),
+      onPanCancel: () => setState(() => _draggingLetter = null),
+      child: Column(
+        key: _indexBarKey,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          for (final letter in _letters.split(''))
+            GestureDetector(
+              onTap: available.contains(letter) ? () => _jumpTo(letter) : null,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text(
+                  letter,
+                  style: TextStyle(
+                    fontFamily: AppTextStyles.fontFamily,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w800,
+                    height: 1.35,
+                    color: available.contains(letter)
+                        ? AppColors.greenDeep
+                        : const Color(0xFFC9CFC9),
+                  ),
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 }

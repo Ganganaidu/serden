@@ -11,6 +11,7 @@ import '../../../core/widgets/loading_overlay.dart';
 import '../cubit/items_cubit.dart';
 import '../cubit/markups_cubit.dart';
 import '../models/item_model.dart';
+import '../models/markup_template.dart';
 
 class ItemFormScreen extends StatefulWidget {
   final Item? item;
@@ -83,11 +84,9 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
       result.fold(
         (f) {
           setState(() => _saving = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(f.message),
-                backgroundColor: AppColors.orangeDeep),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(f.message),
+              backgroundColor: AppColors.orangeDeep));
         },
         (_) => context.pop(),
       );
@@ -104,11 +103,9 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
       result.fold(
         (f) {
           setState(() => _saving = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text(f.message),
-                backgroundColor: AppColors.orangeDeep),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(f.message),
+              backgroundColor: AppColors.orangeDeep));
         },
         (_) => context.pop(),
       );
@@ -144,11 +141,8 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
     result.fold(
       (f) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(f.message),
-              backgroundColor: AppColors.orangeDeep),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(f.message), backgroundColor: AppColors.orangeDeep));
       },
       (_) => context.pop(),
     );
@@ -159,31 +153,40 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
   Future<void> _openMarkupSheet() async {
     final markupsCubit = context.read<MarkupsCubit>();
 
-    // Show the list sheet and wait for a result.
-    // Result is either an ItemMarkup (selected) or null (dismissed / go create).
+    // Fetch if not yet loaded or previously errored
+    if (markupsCubit.state is MarkupsInitial ||
+        markupsCubit.state is MarkupsError) {
+      markupsCubit.fetch(widget.proId);
+    }
+
     final listResult = await showModalBottomSheet<_MarkupPickResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _MarkupListSheet(markups: markupsCubit.state),
+      builder: (_) => BlocProvider.value(
+        value: markupsCubit,
+        child: _MarkupListSheet(proId: widget.proId),
+      ),
     );
 
     if (listResult == null || !mounted) return;
 
     if (listResult.openCreate) {
-      // User tapped "+ New Markup" — open the create sheet.
-      final newMarkup = await showModalBottomSheet<ItemMarkup>(
+      final template = await showModalBottomSheet<MarkupTemplate>(
         context: context,
         isScrollControlled: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => const _MarkupCreateSheet(),
+        builder: (_) => BlocProvider.value(
+          value: markupsCubit,
+          child: _MarkupCreateSheet(proId: widget.proId),
+        ),
       );
-      if (newMarkup != null && mounted) {
-        markupsCubit.addMarkup(newMarkup);
-        setState(() => _markup = newMarkup);
+      if (template != null && mounted) {
+        setState(() => _markup = template.toItemMarkup());
       }
-    } else if (listResult.markup != null) {
-      setState(() => _markup = listResult.markup!);
+    } else {
+      setState(() =>
+          _markup = listResult.template?.toItemMarkup() ?? ItemMarkup.none);
     }
   }
 
@@ -240,9 +243,6 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
               child: _MarkupTile(
                 markup: _markup,
                 onTap: _openMarkupSheet,
-                onRemove: _markup.hasMarkup
-                    ? () => setState(() => _markup = ItemMarkup.none)
-                    : null,
               ),
             ),
             const SectionHeader(title: 'Description'),
@@ -336,23 +336,95 @@ class _ItemFormScreenState extends State<ItemFormScreen> {
   }
 }
 
-// ─── Markup pick result ───────────────────────────────────────────────────────
+// ─── Pick result ──────────────────────────────────────────────────────────────
 
 class _MarkupPickResult {
-  final ItemMarkup? markup;
+  final MarkupTemplate? template;
   final bool openCreate;
 
-  const _MarkupPickResult.selected(this.markup) : openCreate = false;
+  const _MarkupPickResult.selected(this.template) : openCreate = false;
   const _MarkupPickResult.create()
-      : markup = null,
+      : template = null,
         openCreate = true;
+}
+
+// ─── Markup tile (form row) ───────────────────────────────────────────────────
+
+class _MarkupTile extends StatelessWidget {
+  final ItemMarkup markup;
+  final VoidCallback onTap;
+
+  const _MarkupTile({required this.markup, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!markup.hasMarkup) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: const [
+              Icon(Icons.add_circle_outline,
+                  size: 18, color: AppColors.greenDeep),
+              SizedBox(width: 8),
+              Text(
+                'Add item markup',
+                style: TextStyle(
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.greenDeep,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    markup.name ?? 'Markup',
+                    style: AppTextStyles.rowTitle.copyWith(fontSize: 14.5),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    markup.displayRate,
+                    style: AppTextStyles.caption.copyWith(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.greenDeep,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.keyboard_arrow_down_rounded,
+                size: 20, color: AppColors.inkSoft),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ─── Markup list sheet ────────────────────────────────────────────────────────
 
 class _MarkupListSheet extends StatelessWidget {
-  final List<ItemMarkup> markups;
-  const _MarkupListSheet({required this.markups});
+  final int proId;
+  const _MarkupListSheet({required this.proId});
 
   @override
   Widget build(BuildContext context) {
@@ -403,29 +475,104 @@ class _MarkupListSheet extends StatelessWidget {
               ),
             ),
             const Divider(height: 1, color: AppColors.line),
-            // Markup rows
-            if (markups.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
+            // No markup option
+            InkWell(
+              onTap: () => Navigator.of(context)
+                  .pop(const _MarkupPickResult.selected(null)),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                 child: Text(
-                  'No markups yet — create one below.',
-                  style: AppTextStyles.caption.copyWith(
-                      color: AppColors.inkFaint, fontSize: 13),
-                  textAlign: TextAlign.center,
+                  'No markup',
+                  style: TextStyle(
+                    fontFamily: AppTextStyles.fontFamily,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: AppColors.inkSoft,
+                  ),
                 ),
               ),
-            for (final markup in markups) ...[
-              _MarkupRow(
-                markup: markup,
-                onTap: () => Navigator.of(context)
-                    .pop(_MarkupPickResult.selected(markup)),
-              ),
-              const Divider(height: 1, color: AppColors.line),
-            ],
+            ),
+            const Divider(height: 1, color: AppColors.line),
+            // List content
+            BlocBuilder<MarkupsCubit, MarkupsState>(
+              builder: (context, state) {
+                if (state is MarkupsInitial || state is MarkupsLoading) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 36),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (state is MarkupsError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          state.message,
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.inkSoft),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () =>
+                              context.read<MarkupsCubit>().fetch(proId),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                final templates = (state as MarkupsLoaded).templates;
+                if (templates.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 28),
+                    child: Text(
+                      'No markups yet — create one below.',
+                      style: AppTextStyles.caption
+                          .copyWith(color: AppColors.inkFaint, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                  );
+                }
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final t in templates) ...[
+                      InkWell(
+                        onTap: () => Navigator.of(context)
+                            .pop(_MarkupPickResult.selected(t)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 16),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(t.name,
+                                    style: AppTextStyles.rowTitle),
+                              ),
+                              Text(
+                                t.displayRate,
+                                style: AppTextStyles.rowTitle.copyWith(
+                                  color: AppColors.inkSoft,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1, color: AppColors.line),
+                    ],
+                  ],
+                );
+              },
+            ),
             // + New Markup
             InkWell(
-              onTap: () =>
-                  Navigator.of(context).pop(const _MarkupPickResult.create()),
+              onTap: () => Navigator.of(context)
+                  .pop(const _MarkupPickResult.create()),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 20, vertical: 16),
@@ -462,44 +609,11 @@ class _MarkupListSheet extends StatelessWidget {
   }
 }
 
-class _MarkupRow extends StatelessWidget {
-  final ItemMarkup markup;
-  final VoidCallback onTap;
-
-  const _MarkupRow({required this.markup, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                markup.name ?? 'Markup',
-                style: AppTextStyles.rowTitle,
-              ),
-            ),
-            Text(
-              markup.displayRate,
-              style: AppTextStyles.rowTitle.copyWith(
-                color: AppColors.inkSoft,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Markup create sheet ──────────────────────────────────────────────────────
 
 class _MarkupCreateSheet extends StatefulWidget {
-  const _MarkupCreateSheet();
+  final int proId;
+  const _MarkupCreateSheet({required this.proId});
 
   @override
   State<_MarkupCreateSheet> createState() => _MarkupCreateSheetState();
@@ -509,6 +623,7 @@ class _MarkupCreateSheetState extends State<_MarkupCreateSheet> {
   late final TextEditingController _name;
   late final TextEditingController _rate;
   MarkupType _type = MarkupType.percent;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -528,15 +643,31 @@ class _MarkupCreateSheetState extends State<_MarkupCreateSheet> {
 
   bool get _canSubmit {
     final r = double.tryParse(_rate.text.trim()) ?? 0;
-    return _name.text.trim().isNotEmpty && r > 0;
+    return _name.text.trim().isNotEmpty && r > 0 && !_saving;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final name = _name.text.trim();
     final rate = double.tryParse(_rate.text.trim()) ?? 0;
     if (name.isEmpty || rate <= 0) return;
-    Navigator.of(context)
-        .pop(ItemMarkup(name: name, type: _type, rate: rate));
+
+    setState(() => _saving = true);
+    final result = await context.read<MarkupsCubit>().create(
+          proId: widget.proId,
+          name: name,
+          type: _type,
+          rate: rate,
+        );
+    if (!mounted) return;
+    result.fold(
+      (f) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(f.message),
+            backgroundColor: AppColors.orangeDeep));
+      },
+      (template) => Navigator.of(context).pop(template),
+    );
   }
 
   @override
@@ -607,7 +738,6 @@ class _MarkupCreateSheetState extends State<_MarkupCreateSheet> {
                       textCapitalization: TextCapitalization.sentences,
                     ),
                     const SizedBox(height: 20),
-                    // % / $ radio toggle
                     Row(
                       children: [
                         _RadioOption(
@@ -640,7 +770,6 @@ class _MarkupCreateSheetState extends State<_MarkupCreateSheet> {
                       suffixText: _type == MarkupType.percent ? '%' : '\$',
                     ),
                     const SizedBox(height: 16),
-                    // Info
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -661,12 +790,13 @@ class _MarkupCreateSheetState extends State<_MarkupCreateSheet> {
                       ],
                     ),
                     const SizedBox(height: 24),
-                    // Buttons
                     Row(
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () => Navigator.of(context).pop(),
+                            onPressed: _saving
+                                ? null
+                                : () => Navigator.of(context).pop(),
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.inkSoft,
                               side: const BorderSide(color: AppColors.line),
@@ -702,7 +832,15 @@ class _MarkupCreateSheetState extends State<_MarkupCreateSheet> {
                                 letterSpacing: 0.8,
                               ),
                             ),
-                            child: const Text('ADD'),
+                            child: _saving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white),
+                                  )
+                                : const Text('ADD'),
                           ),
                         ),
                       ],
@@ -767,93 +905,6 @@ class _MarkupCreateSheetState extends State<_MarkupCreateSheet> {
           borderRadius: BorderRadius.circular(11),
           borderSide:
               const BorderSide(color: AppColors.greenDeep, width: 1.5),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Markup tile (shows in form) ──────────────────────────────────────────────
-
-class _MarkupTile extends StatelessWidget {
-  final ItemMarkup markup;
-  final VoidCallback onTap;
-  final VoidCallback? onRemove;
-
-  const _MarkupTile({
-    required this.markup,
-    required this.onTap,
-    this.onRemove,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (!markup.hasMarkup) {
-      return InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          child: Row(
-            children: const [
-              Icon(Icons.add_circle_outline,
-                  size: 18, color: AppColors.greenDeep),
-              SizedBox(width: 8),
-              Text(
-                'Add item markup',
-                style: TextStyle(
-                  fontFamily: AppTextStyles.fontFamily,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.greenDeep,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    markup.name ?? 'Markup',
-                    style: AppTextStyles.rowTitle.copyWith(fontSize: 14.5),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    markup.displayRate,
-                    style: AppTextStyles.caption.copyWith(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.greenDeep,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (onRemove != null)
-              GestureDetector(
-                onTap: onRemove,
-                child: const Padding(
-                  padding: EdgeInsets.all(4),
-                  child:
-                      Icon(Icons.close, size: 16, color: AppColors.inkSoft),
-                ),
-              ),
-            const SizedBox(width: 4),
-            const Icon(Icons.chevron_right,
-                size: 18, color: AppColors.inkFaint),
-          ],
         ),
       ),
     );
