@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/bloc/auth_bloc.dart';
+import '../../features/auth/screens/email_verification_screen.dart';
 import '../../features/auth/screens/onboarding_screen.dart';
 import '../utils/onboarding_prefs.dart';
 import '../../features/auth/screens/sign_in_screen.dart';
@@ -42,6 +43,7 @@ abstract class AppRoutes {
   static const onboarding = '/onboarding';
   static const signIn = '/sign-in';
   static const signUp = '/sign-up';
+  static const emailVerification = '/email-verification';
 
   // Shell tabs (must start with /)
   static const estimates = '/estimates';
@@ -84,7 +86,8 @@ class AppRouter {
         final authState = authBloc.state;
         final isAuthRoute = state.matchedLocation == AppRoutes.signIn ||
             state.matchedLocation == AppRoutes.signUp ||
-            state.matchedLocation == AppRoutes.onboarding;
+            state.matchedLocation == AppRoutes.onboarding ||
+            state.matchedLocation == AppRoutes.emailVerification;
 
         if (authState is AuthUnauthenticated && !isAuthRoute) {
           return OnboardingPrefs.seen ? AppRoutes.signIn : AppRoutes.onboarding;
@@ -108,6 +111,12 @@ class AppRouter {
         GoRoute(
           path: AppRoutes.signUp,
           builder: (_, __) => const SignUpScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.emailVerification,
+          builder: (_, state) => EmailVerificationScreen(
+            email: state.extra as String? ?? '',
+          ),
         ),
 
         // Plan selection (full-screen)

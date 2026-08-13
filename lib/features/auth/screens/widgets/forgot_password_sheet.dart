@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/di/injection.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_text_styles.dart';
+import 'turnstile_sheet.dart';
 
 Future<void> showForgotPasswordSheet(
   BuildContext context, {
@@ -42,17 +43,37 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
     super.dispose();
   }
 
+  static String? _validateEmail(String value) {
+    if (value.isEmpty) return 'Please enter your email address.';
+    final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(value);
+    return ok ? null : 'Enter a valid email address.';
+  }
+
   Future<void> _submit() async {
     final email = _email.text.trim();
-    if (email.isEmpty) {
-      setState(() => _error = 'Please enter your email address.');
+    final emailError = _validateEmail(email);
+    if (emailError != null) {
+      setState(() => _error = emailError);
       return;
     }
+
+    // Obtain a Turnstile token before calling the API.
+    final token = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const TurnstileSheet(),
+    );
+
+    if (token == null || !mounted) return;
+
     setState(() {
       _loading = true;
       _error = null;
     });
-    final result = await Injection.authRepository.forgotPassword(email);
+
+    final result = await Injection.authRepository
+        .forgotPassword(email, turnstileToken: token);
     if (!mounted) return;
     result.fold(
       (failure) => setState(() {

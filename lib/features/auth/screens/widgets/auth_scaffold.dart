@@ -19,68 +19,78 @@ class AuthScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 50;
+
     return Scaffold(
       backgroundColor: AppColors.green800,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Green hero — natural height; Padding gives breathing room
-          SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 28),
-              child: Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: AppColors.green700,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.1),
-                          ),
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        child: const Text(
-                          'S',
-                          style: TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+          // Green hero — collapses when keyboard is visible so the form gets
+          // all available space above the keyboard.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: keyboardVisible
+                ? const SizedBox.shrink()
+                : SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 28),
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: AppColors.green700,
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                  ),
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                child: const Text(
+                                  'S',
+                                  style: TextStyle(
+                                    fontFamily: AppTextStyles.fontFamily,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              const Padding(
+                                padding:
+                                    EdgeInsets.symmetric(horizontal: 48),
+                                child: Text(
+                                  'Join the network homeowners trust to find local pros.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontFamily: AppTextStyles.fontFamily,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.5,
+                                    color: Color(0xB3FFFFFF),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 48),
-                        child: Text(
-                          'Join the network homeowners trust to find local pros.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            height: 1.5,
-                            color: Color(0xB3FFFFFF),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ),
           ),
-          // Sheet fills remaining space; SingleChildScrollView inside handles
-          // content that is taller than the available area (e.g. keyboard up).
+          // Sheet fills remaining space above keyboard.
           Expanded(
             child: _Sheet(title: title, subtitle: subtitle, children: children),
           ),
@@ -103,7 +113,6 @@ class _Sheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 24, end: 0),
       duration: const Duration(milliseconds: 400),
@@ -133,7 +142,7 @@ class _Sheet extends StatelessWidget {
             24,
             10,
             24,
-            28 + MediaQuery.of(context).padding.bottom + bottomInset,
+            28 + MediaQuery.of(context).padding.bottom,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

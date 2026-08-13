@@ -22,6 +22,20 @@ class _SignInScreenState extends State<SignInScreen> {
   final _password = TextEditingController();
   bool _showPassword = false;
 
+  String? _emailError;
+  String? _passwordError;
+
+  @override
+  void initState() {
+    super.initState();
+    _email.addListener(() {
+      if (_emailError != null) setState(() => _emailError = null);
+    });
+    _password.addListener(() {
+      if (_passwordError != null) setState(() => _passwordError = null);
+    });
+  }
+
   @override
   void dispose() {
     _email.dispose();
@@ -30,6 +44,17 @@ class _SignInScreenState extends State<SignInScreen> {
   }
 
   void _submit() {
+    final emailError = _email.text.trim().isEmpty ? 'Required.' : null;
+    final passwordError = _password.text.isEmpty ? 'Required.' : null;
+
+    if (emailError != null || passwordError != null) {
+      setState(() {
+        _emailError = emailError;
+        _passwordError = passwordError;
+      });
+      return;
+    }
+
     context.read<AuthBloc>().add(
           AuthSignInRequested(
             email: _email.text.trim(),
@@ -53,16 +78,18 @@ class _SignInScreenState extends State<SignInScreen> {
         subtitle: 'Sign in to your pro account.',
         children: [
           AuthField(
-            label: 'Email address',
+            label: 'username',
             hint: 'you@yourbusiness.com',
             controller: _email,
             keyboardType: TextInputType.emailAddress,
+            errorText: _emailError,
           ),
           AuthField(
             label: 'Password',
             hint: 'Your password',
             controller: _password,
             obscureText: !_showPassword,
+            errorText: _passwordError,
             suffix: IconButton(
               icon: Icon(
                 _showPassword
