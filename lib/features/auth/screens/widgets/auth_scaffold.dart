@@ -175,6 +175,7 @@ class AuthField extends StatelessWidget {
   final bool obscureText;
   final Widget? suffix;
   final String? helper;
+  final String? errorText;
 
   const AuthField({
     super.key,
@@ -185,6 +186,7 @@ class AuthField extends StatelessWidget {
     this.obscureText = false,
     this.suffix,
     this.helper,
+    this.errorText,
   });
 
   @override
@@ -204,15 +206,12 @@ class AuthField extends StatelessWidget {
             decoration: InputDecoration(
               hintText: hint,
               suffixIcon: suffix,
+              helperText: helper,
+              helperMaxLines: 3,
+              errorText: errorText,
+              errorMaxLines: 3,
             ),
           ),
-          if (helper != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              helper!,
-              style: AppTextStyles.caption.copyWith(fontSize: 12),
-            ),
-          ],
         ],
       ),
     );

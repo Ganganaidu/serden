@@ -24,6 +24,54 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _lastName = TextEditingController();
   bool _showPassword = false;
 
+  String? _passwordError;
+  String? _confirmError;
+
+  static String? _checkPassword(String value) {
+    if (value.isEmpty) return null;
+    if (value.length < 8) return 'Must be at least 8 characters.';
+    if (!value.contains(RegExp(r'[A-Z]'))) {
+      return 'Must include at least one uppercase letter.';
+    }
+    if (!value.contains(RegExp(r'[a-z]'))) {
+      return 'Must include at least one lowercase letter.';
+    }
+    if (!value.contains(RegExp(r'[0-9]'))) {
+      return 'Must include at least one number.';
+    }
+    if (!value.contains(RegExp(r'[^A-Za-z0-9]'))) {
+      return 'Must include at least one special character.';
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _password.addListener(_onPasswordChanged);
+    _confirmPassword.addListener(_onConfirmChanged);
+  }
+
+  void _onPasswordChanged() {
+    setState(() {
+      _passwordError = _checkPassword(_password.text);
+      if (_confirmPassword.text.isNotEmpty) {
+        _confirmError = _password.text != _confirmPassword.text
+            ? 'Passwords do not match.'
+            : null;
+      }
+    });
+  }
+
+  void _onConfirmChanged() {
+    setState(() {
+      _confirmError = _confirmPassword.text.isNotEmpty &&
+              _password.text != _confirmPassword.text
+          ? 'Passwords do not match.'
+          : null;
+    });
+  }
+
   @override
   void dispose() {
     _email.dispose();
@@ -35,12 +83,19 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   void _submit() {
-    if (_password.text != _confirmPassword.text) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match.')),
-      );
+    final passError = _checkPassword(_password.text);
+    final confirmError = _password.text != _confirmPassword.text
+        ? 'Passwords do not match.'
+        : null;
+
+    if (passError != null || confirmError != null) {
+      setState(() {
+        _passwordError = passError;
+        _confirmError = confirmError;
+      });
       return;
     }
+
     context.read<AuthBloc>().add(
           AuthSignUpRequested(
             email: _email.text.trim(),
@@ -99,8 +154,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
             hint: '8+ characters',
             controller: _password,
             obscureText: !_showPassword,
-            helper:
-                'At least 8 characters, with an uppercase letter, a lowercase letter, a number, and a special character.',
+            helper: _passwordError == null
+                ? 'Uppercase, lowercase, number, and special character.'
+                : null,
+            errorText: _passwordError,
             suffix: IconButton(
               icon: Icon(
                 _showPassword
@@ -117,6 +174,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             hint: 'Re-enter your password',
             controller: _confirmPassword,
             obscureText: !_showPassword,
+            errorText: _confirmError,
           ),
           const SizedBox(height: 8),
           BlocBuilder<AuthBloc, AuthState>(
