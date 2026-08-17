@@ -78,7 +78,7 @@ class _SignInScreenState extends State<SignInScreen> {
         subtitle: 'Sign in to your pro account.',
         children: [
           AuthField(
-            label: 'username',
+            label: 'User name',
             hint: 'you@yourbusiness.com',
             controller: _email,
             keyboardType: TextInputType.emailAddress,

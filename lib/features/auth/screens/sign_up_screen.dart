@@ -179,7 +179,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               Expanded(
                 child: AuthField(
                   label: 'First name',
-                  hint: 'Enter your First name',
+                  hint: 'Kevin',
                   controller: _firstName,
                   keyboardType: TextInputType.name,
                   errorText: _firstNameError,
@@ -189,7 +189,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               Expanded(
                 child: AuthField(
                   label: 'Last name',
-                  hint: 'Enter your Last name',
+                  hint: 'Smith',
                   controller: _lastName,
                   keyboardType: TextInputType.name,
                   errorText: _lastNameError,
@@ -198,7 +198,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ],
           ),
           AuthField(
-            label: 'Email address',
+            label: 'User name',
             hint: 'you@yourbusiness.com',
             controller: _email,
             keyboardType: TextInputType.emailAddress,
