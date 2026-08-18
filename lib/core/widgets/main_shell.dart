@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../router/app_router.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_text_styles.dart';
+import '../../features/notifications/cubit/notifications_cubit.dart';
 
 /// Root shell with the five-tab bottom navigation:
 /// Estimates · Invoices · Clients · Leads · More
@@ -316,6 +319,25 @@ class HeaderSearchBar extends StatelessWidget {
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         ),
+      ),
+    );
+  }
+}
+
+/// Notification bell button that reads [NotificationsCubit] to show an unread
+/// dot and navigates to the notifications screen when tapped.
+/// Drop this in place of any hardcoded [HeaderIconButton] for notifications.
+class NotificationBellButton extends StatelessWidget {
+  const NotificationBellButton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocSelector<NotificationsCubit, NotificationsState, bool>(
+      selector: (state) => state is NotificationsLoaded && state.hasUnread,
+      builder: (context, hasUnread) => HeaderIconButton(
+        icon: Icons.notifications_outlined,
+        showDot: hasUnread,
+        onTap: () => context.push(AppRoutes.notifications),
       ),
     );
   }

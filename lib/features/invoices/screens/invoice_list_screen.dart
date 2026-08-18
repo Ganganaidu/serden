@@ -82,13 +82,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                 ),
               ],
             ],
-            actions: [
-              HeaderIconButton(
-                icon: Icons.notifications_outlined,
-                showDot: true,
-                onTap: () {},
-              ),
-            ],
+            actions: [const NotificationBellButton()],
             bottom: HeaderSearchBar(
               hint: 'Search client, number, or amount',
               onChanged: (v) => setState(() => _search = v),
@@ -301,8 +295,7 @@ class _InvoicesEmptyView extends StatelessWidget {
             title: 'Invoices',
             subtitle: "Get paid for the work you've done",
             actions: [
-              HeaderIconButton(
-                  icon: Icons.notifications_outlined, onTap: () {}),
+              const NotificationBellButton(),
             ],
           ),
           Expanded(

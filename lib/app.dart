@@ -8,6 +8,9 @@ import 'features/clients/bloc/client_bloc.dart';
 import 'features/items/cubit/items_cubit.dart';
 import 'features/items/cubit/markups_cubit.dart';
 import 'features/leads/bloc/lead_bloc.dart';
+import 'features/notifications/cubit/notifications_cubit.dart';
+import 'features/reviews/cubit/reviews_cubit.dart';
+import 'features/taxes/cubit/taxes_cubit.dart';
 
 class SerdenApp extends StatefulWidget {
   const SerdenApp({super.key});
@@ -22,6 +25,9 @@ class _SerdenAppState extends State<SerdenApp> {
   late final LeadBloc _leadBloc;
   late final ItemsCubit _itemsCubit;
   late final MarkupsCubit _markupsCubit;
+  late final NotificationsCubit _notificationsCubit;
+  late final ReviewsCubit _reviewsCubit;
+  late final TaxesCubit _taxesCubit;
 
   @override
   void initState() {
@@ -31,6 +37,9 @@ class _SerdenAppState extends State<SerdenApp> {
     _leadBloc = Injection.createLeadBloc();
     _itemsCubit = Injection.createItemsCubit();
     _markupsCubit = Injection.createMarkupsCubit();
+    _notificationsCubit = Injection.createNotificationsCubit();
+    _reviewsCubit = Injection.createReviewsCubit();
+    _taxesCubit = Injection.createTaxesCubit();
   }
 
   @override
@@ -40,6 +49,9 @@ class _SerdenAppState extends State<SerdenApp> {
     _leadBloc.close();
     _itemsCubit.close();
     _markupsCubit.close();
+    _notificationsCubit.close();
+    _reviewsCubit.close();
+    _taxesCubit.close();
     super.dispose();
   }
 
@@ -52,6 +64,9 @@ class _SerdenAppState extends State<SerdenApp> {
         BlocProvider.value(value: _leadBloc),
         BlocProvider.value(value: _itemsCubit),
         BlocProvider.value(value: _markupsCubit),
+        BlocProvider.value(value: _notificationsCubit),
+        BlocProvider.value(value: _reviewsCubit),
+        BlocProvider.value(value: _taxesCubit),
       ],
       child: Builder(
         builder: (context) {

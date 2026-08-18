@@ -34,6 +34,15 @@ class MarkupTemplate extends Equatable {
         'markupRate': rate,
       };
 
+  MarkupTemplate copyWith({String? name, MarkupType? type, double? rate}) =>
+      MarkupTemplate(
+        id: id,
+        proId: proId,
+        name: name ?? this.name,
+        type: type ?? this.type,
+        rate: rate ?? this.rate,
+      );
+
   ItemMarkup toItemMarkup() => ItemMarkup(name: name, type: type, rate: rate);
 
   String get displayRate {

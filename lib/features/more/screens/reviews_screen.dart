@@ -1,35 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_fab.dart';
 import '../../../core/widgets/avatar_widget.dart';
 import '../../../core/widgets/loading_overlay.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../../reviews/cubit/reviews_cubit.dart';
+import '../../reviews/models/review_model.dart';
+import '../../reviews/screens/request_review_sheet.dart';
 
-class _Review {
-  final int id;
-  final String name;
-  final String date;
-  final String category;
-  final String tag;
-  final String text;
-  String? response;
-
-  _Review({
-    required this.id,
-    required this.name,
-    required this.date,
-    required this.category,
-    required this.tag,
-    required this.text,
-    this.response,
-  });
-}
-
-/// Public profile reviews with rating summary and owner responses
-/// (serden-reviews design).
 class ReviewsScreen extends StatefulWidget {
   const ReviewsScreen({super.key});
 
@@ -37,62 +19,8 @@ class ReviewsScreen extends StatefulWidget {
   State<ReviewsScreen> createState() => _ReviewsScreenState();
 }
 
-class _ReviewsScreenState extends State<ReviewsScreen> {
-  // Real reviews API isn't wired up yet — show sample data only in mock
-  // mode; a real logged-in user starts with none (empty state).
-  final List<_Review> _reviews =
-      AppConfig.useMockData ? _mockReviews() : [];
-
-  static List<_Review> _mockReviews() => [
-    _Review(
-      id: 1,
-      name: 'Jennifer M.',
-      date: 'May 31, 2026',
-      category: 'Kitchen',
-      tag: 'Kitchen remodel',
-      text:
-          'We used Serden to remodel our kitchen. The whole experience was wonderful — Dennis was so helpful and had great suggestions to help us make design choices that fit our vision and budget. Victor and Alex did most of the work and they were fantastic.',
-    ),
-    _Review(
-      id: 2,
-      name: 'Robert T.',
-      date: 'May 14, 2026',
-      category: 'Addition',
-      tag: 'Home addition',
-      text:
-          'Very professional, up front about price, great communication and extremely high quality work. Our project manager David and his assistant Alex were on top of everything since day one.',
-      response:
-          "Thank you, Robert! David and Alex will be glad to hear this. We're so happy with how the addition turned out.",
-    ),
-    _Review(
-      id: 3,
-      name: 'Sarah K.',
-      date: 'Apr 22, 2026',
-      category: 'Bathroom',
-      tag: 'Bathroom remodel',
-      text:
-          'We had the very best bathroom remodel experience with Serden. We received a handful of bids, theirs right in the middle on price but way above the rest on detail and professionalism.',
-    ),
-    _Review(
-      id: 4,
-      name: 'Marcus P.',
-      date: 'Apr 9, 2026',
-      category: 'Siding',
-      tag: 'Siding',
-      text:
-          'Leo and his crew did an amazing job on the siding. Project manager David was easy to communicate with and very pleasant to deal with — answered every question with professionalism.',
-    ),
-    _Review(
-      id: 5,
-      name: 'Amanda C.',
-      date: 'Mar 18, 2026',
-      category: 'Kitchen',
-      tag: 'Kitchen remodel',
-      text:
-          'From the very start, our designer Jasmine listened to our ideas and executed a more beautiful design than we had imagined. Andrew, Jacob, Alex, and Tim were extremely professional and our job site was always clean and tidy.',
-    ),
-  ];
-
+class _ReviewsScreenState extends State<ReviewsScreen>
+    with WidgetsBindingObserver {
   static const _categories = [
     'All reviews',
     'Kitchen',
@@ -105,48 +33,148 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
   int _categoryIndex = 0;
   int? _openFormId;
   final _responseController = TextEditingController();
+  DateTime? _backgroundedAt;
+
+  int? get _proId {
+    final auth = context.read<AuthBloc>().state;
+    return auth is AuthAuthenticated ? auth.user.proId : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final proId = _proId;
+    if (proId != null) context.read<ReviewsCubit>().fetch(proId);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _backgroundedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final bg = _backgroundedAt;
+      _backgroundedAt = null;
+      if (bg != null &&
+          DateTime.now().difference(bg) > const Duration(minutes: 2)) {
+        _refresh();
+      }
+    }
+  }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _responseController.dispose();
     super.dispose();
   }
 
-  int get _awaiting => _reviews.where((r) => r.response == null).length;
+  void _refresh() {
+    final proId = _proId;
+    if (proId != null) context.read<ReviewsCubit>().fetch(proId);
+  }
 
-  List<_Review> get _filtered {
+  Future<void> _handleRefresh() async {
+    _refresh();
+    try {
+      await context
+          .read<ReviewsCubit>()
+          .stream
+          .firstWhere((s) => s is ReviewsLoaded || s is ReviewsError)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {}
+  }
+
+  List<Review> _filtered(List<Review> reviews) {
     final q = _search.trim().toLowerCase();
     final category =
         _categoryIndex == 0 ? null : _categories[_categoryIndex];
-    return _reviews
+    return reviews
         .where((r) =>
             (category == null || r.category == category) &&
             (q.isEmpty ||
                 r.text.toLowerCase().contains(q) ||
-                r.name.toLowerCase().contains(q) ||
-                r.tag.toLowerCase().contains(q)))
+                r.reviewerName.toLowerCase().contains(q) ||
+                (r.tag?.toLowerCase().contains(q) ?? false)))
         .toList();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          _header(context),
-          _controls(),
-          Expanded(child: _list()),
-        ],
-      ),
-      floatingActionButton: AppFab(
-        label: 'Request reviews',
-        icon: Icons.star_outline,
-        onPressed: () {},
+  void _openRequestSheet() {
+    final proId = _proId;
+    if (proId == null) return;
+    final auth = context.read<AuthBloc>().state;
+    final fromEmail =
+        auth is AuthAuthenticated ? auth.user.email : '';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => BlocProvider.value(
+        value: context.read<ReviewsCubit>(),
+        child: RequestReviewSheet(proId: proId, fromEmail: fromEmail),
       ),
     );
   }
 
-  Widget _header(BuildContext context) {
+  Future<void> _submitResponse(Review review, String text) async {
+    final auth = context.read<AuthBloc>().state;
+    final userId =
+        auth is AuthAuthenticated ? auth.user.userId : 0;
+
+    final result = await context.read<ReviewsCubit>().respond(
+          reviewId: review.id,
+          companyResponseText: text,
+          currentUserId: userId,
+        );
+    if (!mounted) return;
+    result.fold(
+      (f) => ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(f.message),
+            backgroundColor: AppColors.orangeDeep),
+      ),
+      (_) {
+        setState(() {
+          _openFormId = null;
+          _responseController.clear();
+        });
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<ReviewsCubit, ReviewsState>(
+      builder: (context, state) {
+        return Scaffold(
+          body: Column(
+            children: [
+              _header(context, state),
+              _controls(),
+              Expanded(child: _body(context, state)),
+            ],
+          ),
+          floatingActionButton: AppFab(
+            label: 'Request reviews',
+            icon: Icons.star_outline,
+            onPressed: _openRequestSheet,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _header(BuildContext context, ReviewsState state) {
+    final loaded = state is ReviewsLoaded ? state : null;
+    final avgRating = loaded?.averageRating ?? 4.9;
+    final totalCount = loaded?.totalCount ?? 0;
+    final awaiting = loaded?.awaitingResponse ?? 0;
+    final star5 = loaded?.star5Count ?? 0;
+    final star4 = loaded?.star4Count ?? 0;
+    final star3 = loaded?.star3Count ?? 0;
+    final total = (star5 + star4 + star3).clamp(1, double.maxFinite).toInt();
+
     return Container(
       color: AppColors.green800,
       padding: EdgeInsets.only(
@@ -185,28 +213,34 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           const SizedBox(height: 4),
           const Text('Reviews', style: AppTextStyles.headerTitle),
           const SizedBox(height: 3),
-          Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(
-                  text: '4.9 rating',
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w700),
-                ),
-                const TextSpan(text: ' · '),
-                _awaiting > 0
-                    ? TextSpan(
-                        text: '$_awaiting awaiting your response',
-                        style: const TextStyle(
-                          color: AppColors.overdueOnHeader,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      )
-                    : const TextSpan(text: 'every review answered'),
-              ],
+          if (loaded != null)
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: '$avgRating rating',
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                  const TextSpan(text: ' · '),
+                  awaiting > 0
+                      ? TextSpan(
+                          text: '$awaiting awaiting your response',
+                          style: const TextStyle(
+                            color: AppColors.overdueOnHeader,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : const TextSpan(text: 'every review answered'),
+                ],
+              ),
+              style: AppTextStyles.headerSubtitle,
+            )
+          else
+            Text(
+              'Your client reviews',
+              style: AppTextStyles.headerSubtitle,
             ),
-            style: AppTextStyles.headerSubtitle,
-          ),
           const SizedBox(height: 14),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -219,9 +253,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
               children: [
                 Column(
                   children: [
-                    const Text(
-                      '4.9',
-                      style: TextStyle(
+                    Text(
+                      avgRating.toStringAsFixed(1),
+                      style: const TextStyle(
                         fontFamily: AppTextStyles.fontFamily,
                         fontSize: 32,
                         fontWeight: FontWeight.w800,
@@ -237,9 +271,9 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                       ],
                     ),
                     const SizedBox(height: 3),
-                    const Text(
-                      '153 reviews',
-                      style: TextStyle(
+                    Text(
+                      '$totalCount reviews',
+                      style: const TextStyle(
                         fontFamily: AppTextStyles.fontFamily,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -251,12 +285,21 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
-                    children: const [
-                      _DistRow(label: '5★', fraction: 0.93, count: 142),
-                      SizedBox(height: 5),
-                      _DistRow(label: '4★', fraction: 0.06, count: 9),
-                      SizedBox(height: 5),
-                      _DistRow(label: '3★', fraction: 0.01, count: 2),
+                    children: [
+                      _DistRow(
+                          label: '5★',
+                          fraction: total > 0 ? star5 / total : 0,
+                          count: star5),
+                      const SizedBox(height: 5),
+                      _DistRow(
+                          label: '4★',
+                          fraction: total > 0 ? star4 / total : 0,
+                          count: star4),
+                      const SizedBox(height: 5),
+                      _DistRow(
+                          label: '3★',
+                          fraction: total > 0 ? star3 / total : 0,
+                          count: star3),
                     ],
                   ),
                 ),
@@ -314,8 +357,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   color: selected ? AppColors.green800 : AppColors.page,
                   shape: StadiumBorder(
                     side: BorderSide(
-                      color:
-                          selected ? AppColors.green800 : AppColors.line,
+                      color: selected ? AppColors.green800 : AppColors.line,
                     ),
                   ),
                   child: InkWell(
@@ -330,8 +372,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                           fontFamily: AppTextStyles.fontFamily,
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color:
-                              selected ? Colors.white : AppColors.inkSoft,
+                          color: selected ? Colors.white : AppColors.inkSoft,
                         ),
                       ),
                     ),
@@ -345,32 +386,78 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     );
   }
 
-  Widget _list() {
-    final rows = _filtered;
-    if (rows.isEmpty) {
-      return const EmptyState(
-        title: 'No matches',
-        description: 'Try a different word or category.',
+  Widget _body(BuildContext context, ReviewsState state) {
+    if (state is ReviewsLoading || state is ReviewsInitial) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (state is ReviewsError) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.cloud_off_outlined,
+                  size: 48, color: AppColors.inkFaint),
+              const SizedBox(height: 16),
+              Text(state.message,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(color: AppColors.inkSoft)),
+              const SizedBox(height: 20),
+              TextButton(onPressed: _refresh, child: const Text('Try again')),
+            ],
+          ),
+        ),
       );
     }
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
-      children: [
-        for (final review in rows) _reviewCard(review),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-          child: Text(
-            'Reviews are collected from verified Serden clients and synced from Google.',
-            textAlign: TextAlign.center,
-            style: AppTextStyles.caption.copyWith(fontSize: 11.5, height: 1.5),
-          ),
+    if (state is ReviewsLoaded) {
+      final filtered = _filtered(state.reviews);
+
+      if (state.reviews.isEmpty) {
+        return const EmptyState(
+          title: 'No reviews yet',
+          description:
+              'Send review requests to your clients — they\'ll appear here once submitted.',
+          icon: Icons.star_outline,
+        );
+      }
+
+      if (filtered.isEmpty) {
+        return const EmptyState(
+          title: 'No matches',
+          description: 'Try a different word or category.',
+        );
+      }
+
+      return RefreshIndicator(
+        onRefresh: _handleRefresh,
+        color: AppColors.orange500,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 96),
+          children: [
+            for (final review in filtered) _reviewCard(review),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+              child: Text(
+                'Reviews are collected from verified Serden clients and synced from Google.',
+                textAlign: TextAlign.center,
+                style: AppTextStyles.caption
+                    .copyWith(fontSize: 11.5, height: 1.5),
+              ),
+            ),
+          ],
         ),
-      ],
-    );
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
-  Widget _reviewCard(_Review review) {
+  Widget _reviewCard(Review review) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
@@ -384,23 +471,23 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         children: [
           Row(
             children: [
-              AvatarWidget(name: review.name, size: 40),
+              AvatarWidget(name: review.reviewerName, size: 40),
               const SizedBox(width: 11),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(review.name,
-                        style:
-                            AppTextStyles.rowTitle.copyWith(fontSize: 14.5)),
+                    Text(review.reviewerName,
+                        style: AppTextStyles.rowTitle
+                            .copyWith(fontSize: 14.5)),
                     const SizedBox(height: 3),
                     Row(
                       children: [
-                        for (var i = 0; i < 5; i++)
+                        for (var i = 0; i < review.rating; i++)
                           const Icon(Icons.star,
                               size: 12, color: AppColors.star),
                         const SizedBox(width: 7),
-                        Text(review.date,
+                        Text(review.reviewDate,
                             style: AppTextStyles.caption.copyWith(
                                 fontSize: 11.5,
                                 fontWeight: FontWeight.w600)),
@@ -438,18 +525,19 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           const SizedBox(height: 11),
           Text(
             review.text,
-            style: AppTextStyles.bodySmall
-                .copyWith(fontSize: 13.5, height: 1.6),
+            style: AppTextStyles.bodySmall.copyWith(fontSize: 13.5, height: 1.6),
           ),
-          const SizedBox(height: 10),
+          if (review.tag != null) const SizedBox(height: 10),
+          if (review.tag != null)
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: AppColors.grayTint,
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              review.tag,
+              review.tag!,
               style: const TextStyle(
                 fontFamily: AppTextStyles.fontFamily,
                 fontSize: 11.5,
@@ -461,8 +549,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
           if (review.response != null)
             Container(
               margin: const EdgeInsets.only(top: 12),
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 13, vertical: 11),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
               decoration: const BoxDecoration(
                 color: AppColors.greenTint,
                 border: Border(
@@ -504,11 +592,11 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                     controller: _responseController,
                     maxLines: 3,
                     autofocus: true,
-                    style: AppTextStyles.bodySmall
-                        .copyWith(fontSize: 13.5, color: AppColors.ink),
+                    style: AppTextStyles.bodySmall.copyWith(
+                        fontSize: 13.5, color: AppColors.ink),
                     decoration: InputDecoration(
                       hintText:
-                          'Thank ${review.name.split(' ').first} and mention your team by name…',
+                          'Thank ${review.reviewerName.split(' ').first} and mention your team by name…',
                       isDense: true,
                       filled: true,
                       fillColor: AppColors.page,
@@ -540,11 +628,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                         onPressed: () {
                           final text = _responseController.text.trim();
                           if (text.isEmpty) return;
-                          setState(() {
-                            review.response = text;
-                            _openFormId = null;
-                            _responseController.clear();
-                          });
+                          _submitResponse(review, text);
                         },
                         style: ElevatedButton.styleFrom(
                           minimumSize: Size.zero,
@@ -574,7 +658,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
                   minimumSize: Size.zero,
                   padding: const EdgeInsets.symmetric(
                       horizontal: 14, vertical: 8),
-                  side: const BorderSide(color: AppColors.line, width: 1.5),
+                  side:
+                      const BorderSide(color: AppColors.line, width: 1.5),
                   shape: const StadiumBorder(),
                   textStyle: const TextStyle(
                     fontFamily: AppTextStyles.fontFamily,
@@ -591,6 +676,8 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     );
   }
 }
+
+// ─── Star distribution row ────────────────────────────────────────────────────
 
 class _DistRow extends StatelessWidget {
   final String label;

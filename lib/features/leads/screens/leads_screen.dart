@@ -20,15 +20,21 @@ class LeadsScreen extends StatefulWidget {
   State<LeadsScreen> createState() => _LeadsScreenState();
 }
 
-class _LeadsScreenState extends State<LeadsScreen> {
+class _LeadsScreenState extends State<LeadsScreen>
+    with WidgetsBindingObserver {
   int _tabIndex = 0;
   String _search = '';
   int? _userId;
   final _scrollController = ScrollController();
+  DateTime? _backgroundedAt;
+  late final GoRouter _goRouter;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _goRouter = GoRouter.of(context);
+    _goRouter.routeInformationProvider.addListener(_onRouteChanged);
     final authState = context.read<AuthBloc>().state;
     if (authState is AuthAuthenticated) {
       _userId = authState.user.userId;
@@ -37,8 +43,49 @@ class _LeadsScreenState extends State<LeadsScreen> {
     _scrollController.addListener(_onScroll);
   }
 
+  // Fires on every route change. Refresh whenever the leads list
+  // becomes the active screen (tab switch OR returning from add/detail).
+  void _onRouteChanged() {
+    final path = _goRouter.routeInformationProvider.value.uri.path;
+    if (path == AppRoutes.leads) _refresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _backgroundedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final bg = _backgroundedAt;
+      _backgroundedAt = null;
+      if (bg != null && DateTime.now().difference(bg) > const Duration(minutes: 2)) {
+        _refresh();
+      }
+    }
+  }
+
+  void _refresh() {
+    final uid = _userId;
+    if (uid == null) return;
+    context.read<LeadBloc>().add(LeadsFetchRequested(uid));
+  }
+
+  Future<void> _handleRefresh() async {
+    _refresh();
+    try {
+      await context
+          .read<LeadBloc>()
+          .stream
+          .firstWhere((s) => s is LeadsLoaded || s is LeadsError)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Timeout — dismiss spinner anyway
+    }
+  }
+
   @override
   void dispose() {
+    _goRouter.routeInformationProvider.removeListener(_onRouteChanged);
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
   }
@@ -125,13 +172,7 @@ class _LeadsScreenState extends State<LeadsScreen> {
                           const TextSpan(
                               text: 'All caught up — nothing waiting on you'),
                         ],
-                  actions: [
-                    HeaderIconButton(
-                      icon: Icons.notifications_outlined,
-                      showDot: newCount > 0,
-                      onTap: () {},
-                    ),
-                  ],
+                  actions: [const NotificationBellButton()],
                   bottom: HeaderSearchBar(
                     hint: 'Search name, project, or city',
                     onChanged: (v) => setState(() => _search = v),
@@ -198,8 +239,12 @@ class _LeadsScreenState extends State<LeadsScreen> {
     }
 
     final itemCount = rows.length + (isLoadingMore ? 1 : 0);
-    return ListView.builder(
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: AppColors.orange500,
+      child: ListView.builder(
       controller: _scrollController,
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 96),
       itemCount: itemCount,
       itemBuilder: (context, index) {
@@ -218,7 +263,8 @@ class _LeadsScreenState extends State<LeadsScreen> {
           ),
         );
       },
-    );
+      ),
+    ); // RefreshIndicator
   }
 }
 

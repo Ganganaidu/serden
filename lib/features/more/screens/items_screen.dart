@@ -19,12 +19,15 @@ class ItemsScreen extends StatefulWidget {
   State<ItemsScreen> createState() => _ItemsScreenState();
 }
 
-class _ItemsScreenState extends State<ItemsScreen> {
+class _ItemsScreenState extends State<ItemsScreen>
+    with WidgetsBindingObserver {
   static const _letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   final Map<String, GlobalKey> _sectionKeys = {};
   final GlobalKey _indexBarKey = GlobalKey();
   String _search = '';
   String? _draggingLetter;
+  DateTime? _backgroundedAt;
+  late final GoRouter _goRouter;
 
   int? get _proId {
     final auth = context.read<AuthBloc>().state;
@@ -34,11 +37,58 @@ class _ItemsScreenState extends State<ItemsScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _goRouter = GoRouter.of(context);
+    _goRouter.routeInformationProvider.addListener(_onRouteChanged);
     final authState = context.read<AuthBloc>().state;
     if (authState is AuthAuthenticated) {
       final proId = authState.user.proId;
       if (proId != null) context.read<ItemsCubit>().fetch(proId);
     }
+  }
+
+  // Refresh when returning from the item form.
+  void _onRouteChanged() {
+    final path = _goRouter.routeInformationProvider.value.uri.path;
+    if (path == AppRoutes.items) _refresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _backgroundedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final bg = _backgroundedAt;
+      _backgroundedAt = null;
+      if (bg != null && DateTime.now().difference(bg) > const Duration(minutes: 2)) {
+        _refresh();
+      }
+    }
+  }
+
+  void _refresh() {
+    final proId = _proId;
+    if (proId != null) context.read<ItemsCubit>().fetch(proId);
+  }
+
+  Future<void> _handleRefresh() async {
+    _refresh();
+    try {
+      await context
+          .read<ItemsCubit>()
+          .stream
+          .firstWhere((s) => s is ItemsLoaded || s is ItemsError)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Timeout — dismiss spinner anyway
+    }
+  }
+
+  @override
+  void dispose() {
+    _goRouter.routeInformationProvider.removeListener(_onRouteChanged);
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Map<String, List<Item>> _grouped(List<Item> items) {
@@ -234,9 +284,13 @@ class _ItemsScreenState extends State<ItemsScreen> {
       );
     }
 
-    return Stack(
+    return RefreshIndicator(
+      onRefresh: _handleRefresh,
+      color: AppColors.orange500,
+      child: Stack(
       children: [
         ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.only(right: 34, bottom: 96),
           children: [
             for (final entry in groups.entries) ...[
@@ -293,7 +347,8 @@ class _ItemsScreenState extends State<ItemsScreen> {
             ),
           ),
       ],
-    );
+      ),
+    ); // RefreshIndicator
   }
 
 

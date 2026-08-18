@@ -35,8 +35,11 @@ import '../../features/more/screens/items_screen.dart';
 import '../../features/more/screens/more_screen.dart';
 import '../../features/more/screens/my_account_screen.dart';
 import '../../features/more/screens/reviews_screen.dart';
+import '../../features/more/screens/markups_screen.dart';
 import '../../features/more/screens/settings_screen.dart';
+import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/plans/screens/choose_plan_screen.dart';
+import '../../features/taxes/screens/taxes_screen.dart';
 import '../widgets/main_shell.dart';
 
 abstract class AppRoutes {
@@ -74,6 +77,9 @@ abstract class AppRoutes {
   static const about = '/more/settings/about';
 
   static const choosePlan = '/choose-plan';
+  static const notifications = '/notifications';
+  static const taxes = '/more/taxes';
+  static const markups = '/more/markups';
 }
 
 class AppRouter {
@@ -117,6 +123,12 @@ class AppRouter {
           builder: (_, state) => EmailVerificationScreen(
             email: state.extra as String? ?? '',
           ),
+        ),
+
+        // Notifications (full-screen push, accessible from any tab's bell icon)
+        GoRoute(
+          path: AppRoutes.notifications,
+          builder: (_, __) => const NotificationsScreen(),
         ),
 
         // Plan selection (full-screen)
@@ -281,6 +293,14 @@ class AppRouter {
                     GoRoute(
                       path: 'reviews',
                       builder: (_, __) => const ReviewsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'taxes',
+                      builder: (_, __) => const TaxesScreen(),
+                    ),
+                    GoRoute(
+                      path: 'markups',
+                      builder: (_, __) => const MarkupsScreen(),
                     ),
                     GoRoute(
                       path: 'items',

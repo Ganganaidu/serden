@@ -73,13 +73,7 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
               ),
               const TextSpan(text: ' awaiting approval'),
             ],
-            actions: [
-              HeaderIconButton(
-                icon: Icons.notifications_outlined,
-                showDot: true,
-                onTap: () {},
-              ),
-            ],
+            actions: [const NotificationBellButton()],
             bottom: HeaderSearchBar(
               hint: 'Search client, number, or amount',
               onChanged: (v) => setState(() => _search = v),
@@ -267,7 +261,7 @@ class _EstimatesWelcomeViewState extends State<_EstimatesWelcomeView> {
             title: 'Estimates',
             subtitle: "Let's get you set up",
             actions: [
-              HeaderIconButton(icon: Icons.notifications_outlined, onTap: () {}),
+              const NotificationBellButton(),
             ],
           ),
           Expanded(

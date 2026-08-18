@@ -5,51 +5,43 @@ import '../../../core/errors/exceptions.dart';
 import '../../../core/errors/failures.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/app_logger.dart';
-import '../models/item_model.dart';
-import '../models/markup_template.dart';
+import '../models/tax_model.dart';
 
-abstract class MarkupRepository {
-  Future<Either<Failure, List<MarkupTemplate>>> fetchMarkups(int proId);
-  Future<Either<Failure, MarkupTemplate>> createMarkup({
+abstract class TaxRepository {
+  Future<Either<Failure, List<TaxRate>>> fetchTaxes(int proId);
+  Future<Either<Failure, TaxRate>> createTax({
     required int proId,
     required String name,
-    required MarkupType type,
     required double rate,
   });
-  Future<Either<Failure, MarkupTemplate>> updateMarkup(MarkupTemplate template);
-  Future<Either<Failure, void>> deleteMarkup(int markupId);
+  Future<Either<Failure, TaxRate>> updateTax(TaxRate tax);
+  Future<Either<Failure, void>> deleteTax(int taxId);
 }
 
-class MarkupRepositoryImpl implements MarkupRepository {
+class TaxRepositoryImpl implements TaxRepository {
   final ApiClient _apiClient;
   static const bool _useMock = AppConfig.useMockData;
 
-  MarkupRepositoryImpl({required ApiClient apiClient})
-      : _apiClient = apiClient;
+  TaxRepositoryImpl({required ApiClient apiClient}) : _apiClient = apiClient;
 
   @override
-  Future<Either<Failure, List<MarkupTemplate>>> fetchMarkups(int proId) async {
-    AppLogger.api('fetchMarkups: proId=$proId');
+  Future<Either<Failure, List<TaxRate>>> fetchTaxes(int proId) async {
+    AppLogger.api('fetchTaxes: proId=$proId');
     if (_useMock) {
       await Future.delayed(const Duration(milliseconds: 400));
       return Right([
-        MarkupTemplate(id: 1, proId: proId, name: 'Overhead', type: MarkupType.percent, rate: 10),
-        MarkupTemplate(id: 2, proId: proId, name: 'Material markup', type: MarkupType.percent, rate: 15),
+        TaxRate(id: 1, proId: proId, name: 'Sales tax', rate: 5.0),
+        TaxRate(id: 2, proId: proId, name: 'State tax', rate: 7.5),
       ]);
     }
     try {
-      final response = await _apiClient.get('/lineitems/markups/pro/$proId');
+      final response = await _apiClient.get('/taxes/pro/$proId');
       final data = response.data as List<dynamic>;
-      if (data.isNotEmpty) {
-        AppLogger.api(
-            'fetchMarkups: first item keys = ${(data.first as Map<String, dynamic>).keys.toList()}');
-        AppLogger.api('fetchMarkups: first item = ${data.first}');
-      }
-      final templates = data
-          .map((e) => MarkupTemplate.fromJson(e as Map<String, dynamic>))
+      final taxes = data
+          .map((e) => TaxRate.fromJson(e as Map<String, dynamic>))
           .toList();
-      AppLogger.api('fetchMarkups: loaded ${templates.length} templates');
-      return Right(templates);
+      AppLogger.api('fetchTaxes: loaded ${taxes.length} taxes');
+      return Right(taxes);
     } on UnauthorizedException catch (e) {
       return Left(UnauthorizedFailure(e.message));
     } on ServerException catch (e) {
@@ -57,41 +49,33 @@ class MarkupRepositoryImpl implements MarkupRepository {
     } on NetworkException catch (e) {
       return Left(NetworkFailure(e.message));
     } catch (e) {
-      AppLogger.error('fetchMarkups: unexpected — $e');
+      AppLogger.error('fetchTaxes: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }
 
   @override
-  Future<Either<Failure, MarkupTemplate>> createMarkup({
+  Future<Either<Failure, TaxRate>> createTax({
     required int proId,
     required String name,
-    required MarkupType type,
     required double rate,
   }) async {
-    AppLogger.api('createMarkup: proId=$proId name=$name');
+    AppLogger.api('createTax: proId=$proId name=$name rate=$rate');
     if (_useMock) {
-      await Future.delayed(const Duration(milliseconds: 500));
-      return Right(MarkupTemplate(
+      await Future.delayed(const Duration(milliseconds: 400));
+      return Right(TaxRate(
         id: DateTime.now().millisecondsSinceEpoch,
         proId: proId,
         name: name,
-        type: type,
         rate: rate,
       ));
     }
     try {
       final response = await _apiClient.post(
-        '/lineitems/markups',
-        data: {
-          'proId': proId,
-          'markupName': name,
-          'markupType': type == MarkupType.flat ? 'F' : 'P',
-          'markupRate': rate,
-        },
+        '/taxes',
+        data: {'proId': proId, 'taxName': name, 'taxRate': rate},
       );
-      return Right(
-          MarkupTemplate.fromJson(response.data as Map<String, dynamic>));
+      return Right(TaxRate.fromJson(response.data as Map<String, dynamic>));
     } on UnauthorizedException catch (e) {
       return Left(UnauthorizedFailure(e.message));
     } on ServerException catch (e) {
@@ -99,26 +83,24 @@ class MarkupRepositoryImpl implements MarkupRepository {
     } on NetworkException catch (e) {
       return Left(NetworkFailure(e.message));
     } catch (e) {
-      AppLogger.error('createMarkup: unexpected — $e');
+      AppLogger.error('createTax: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }
 
   @override
-  Future<Either<Failure, MarkupTemplate>> updateMarkup(
-      MarkupTemplate template) async {
-    AppLogger.api('updateMarkup: id=${template.id}');
+  Future<Either<Failure, TaxRate>> updateTax(TaxRate tax) async {
+    AppLogger.api('updateTax: id=${tax.id}');
     if (_useMock) {
       await Future.delayed(const Duration(milliseconds: 400));
-      return Right(template);
+      return Right(tax);
     }
     try {
       final response = await _apiClient.put(
-        '/lineitems/markups/${template.id}',
-        data: template.toJson(),
+        '/taxes/${tax.id}',
+        data: tax.toJson(),
       );
-      return Right(
-          MarkupTemplate.fromJson(response.data as Map<String, dynamic>));
+      return Right(TaxRate.fromJson(response.data as Map<String, dynamic>));
     } on UnauthorizedException catch (e) {
       return Left(UnauthorizedFailure(e.message));
     } on ServerException catch (e) {
@@ -126,20 +108,20 @@ class MarkupRepositoryImpl implements MarkupRepository {
     } on NetworkException catch (e) {
       return Left(NetworkFailure(e.message));
     } catch (e) {
-      AppLogger.error('updateMarkup: unexpected — $e');
+      AppLogger.error('updateTax: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }
 
   @override
-  Future<Either<Failure, void>> deleteMarkup(int markupId) async {
-    AppLogger.api('deleteMarkup: id=$markupId');
+  Future<Either<Failure, void>> deleteTax(int taxId) async {
+    AppLogger.api('deleteTax: id=$taxId');
     if (_useMock) {
       await Future.delayed(const Duration(milliseconds: 300));
       return const Right(null);
     }
     try {
-      await _apiClient.delete('/lineitems/markups/$markupId');
+      await _apiClient.delete('/taxes/$taxId');
       return const Right(null);
     } on UnauthorizedException catch (e) {
       return Left(UnauthorizedFailure(e.message));
@@ -148,7 +130,7 @@ class MarkupRepositoryImpl implements MarkupRepository {
     } on NetworkException catch (e) {
       return Left(NetworkFailure(e.message));
     } catch (e) {
-      AppLogger.error('deleteMarkup: unexpected — $e');
+      AppLogger.error('deleteTax: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }

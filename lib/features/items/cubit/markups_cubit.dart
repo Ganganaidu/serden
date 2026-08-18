@@ -46,4 +46,29 @@ class MarkupsCubit extends Cubit<MarkupsState> {
     );
     return result;
   }
+
+  Future<Either<Failure, MarkupTemplate>> update(
+      MarkupTemplate template) async {
+    final result = await _repository.updateMarkup(template);
+    result.fold(
+      (_) {},
+      (updated) {
+        final next = _current
+            .map((t) => t.id == updated.id ? updated : t)
+            .toList();
+        emit(MarkupsLoaded(next));
+      },
+    );
+    return result;
+  }
+
+  Future<Either<Failure, void>> delete(int markupId) async {
+    final result = await _repository.deleteMarkup(markupId);
+    result.fold(
+      (_) {},
+      (_) => emit(
+          MarkupsLoaded(_current.where((t) => t.id != markupId).toList())),
+    );
+    return result;
+  }
 }

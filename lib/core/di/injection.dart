@@ -10,6 +10,12 @@ import '../../features/items/repository/item_repository.dart';
 import '../../features/leads/bloc/lead_bloc.dart';
 import '../../features/leads/cubit/lead_detail_cubit.dart';
 import '../../features/leads/repository/lead_repository.dart';
+import '../../features/notifications/cubit/notifications_cubit.dart';
+import '../../features/notifications/repository/notification_repository.dart';
+import '../../features/reviews/cubit/reviews_cubit.dart';
+import '../../features/reviews/repository/review_repository.dart';
+import '../../features/taxes/cubit/taxes_cubit.dart';
+import '../../features/taxes/repository/tax_repository.dart';
 import '../network/api_client.dart';
 import '../network/token_interceptor.dart';
 import '../storage/secure_storage.dart';
@@ -27,6 +33,9 @@ class Injection {
   static late LeadRepository _leadRepository;
   static late ItemRepository _itemRepository;
   static late MarkupRepository _markupRepository;
+  static late NotificationRepository _notificationRepository;
+  static late ReviewRepository _reviewRepository;
+  static late TaxRepository _taxRepository;
 
   static void init() {
     _secureStorage = SecureStorage();
@@ -40,6 +49,9 @@ class Injection {
     _leadRepository = LeadRepositoryImpl(apiClient: _apiClient);
     _itemRepository = ItemRepositoryImpl(apiClient: _apiClient);
     _markupRepository = MarkupRepositoryImpl(apiClient: _apiClient);
+    _notificationRepository = NotificationRepositoryImpl();
+    _reviewRepository = ReviewRepositoryImpl(apiClient: _apiClient);
+    _taxRepository = TaxRepositoryImpl(apiClient: _apiClient);
   }
 
   static SecureStorage get secureStorage => _secureStorage;
@@ -68,4 +80,13 @@ class Injection {
 
   static MarkupsCubit createMarkupsCubit() =>
       MarkupsCubit(repository: _markupRepository);
+
+  static NotificationsCubit createNotificationsCubit() =>
+      NotificationsCubit(repository: _notificationRepository);
+
+  static ReviewsCubit createReviewsCubit() =>
+      ReviewsCubit(repository: _reviewRepository);
+
+  static TaxesCubit createTaxesCubit() =>
+      TaxesCubit(repository: _taxRepository);
 }

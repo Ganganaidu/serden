@@ -21,13 +21,7 @@ class MoreScreen extends StatelessWidget {
           AppHeader(
             title: 'More',
             subtitle: 'Serden Group LLC',
-            actions: [
-              HeaderIconButton(
-                icon: Icons.notifications_outlined,
-                showDot: true,
-                onTap: () {},
-              ),
-            ],
+            actions: [const NotificationBellButton()],
           ),
           Expanded(
             child: ListView(
@@ -47,32 +41,12 @@ class MoreScreen extends StatelessWidget {
                       ),
                       CardRow(
                         icon: Icons.star_outline,
-                        title: 'Profile reviews',
-                        valueWidget: Row(
-                          children: [
-                            const Icon(Icons.star,
-                                size: 13, color: AppColors.star),
-                            const SizedBox(width: 4),
-                            Text(
-                              '4.9 · 153',
-                              style: AppTextStyles.caption.copyWith(
-                                  fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
-                          ],
-                        ),
+                        title: 'Reviews',
                         onTap: () => context.push(AppRoutes.reviews),
-                      ),
-                      CardRow(
-                        icon: Icons.home_work_outlined,
-                        title: 'Company profile',
-                        value: '85% complete',
-                        attention: true,
-                        onTap: () => context.push(AppRoutes.companyProfile),
                       ),
                       CardRow(
                         icon: Icons.sell_outlined,
                         title: 'Items',
-                        value: '16 saved',
                         showDivider: false,
                         onTap: () => context.push(AppRoutes.items),
                       ),
@@ -83,13 +57,6 @@ class MoreScreen extends StatelessWidget {
                 AppCard(
                   child: Column(
                     children: [
-                      CardRow(
-                        icon: Icons.person_outline,
-                        grayIcon: true,
-                        title: 'My account',
-                        value: 'Dennis',
-                        onTap: () => context.push(AppRoutes.accountView),
-                      ),
                       CardRow(
                         icon: Icons.credit_card_outlined,
                         grayIcon: true,

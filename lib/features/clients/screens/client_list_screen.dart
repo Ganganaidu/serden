@@ -21,7 +21,8 @@ class ClientListScreen extends StatefulWidget {
   State<ClientListScreen> createState() => _ClientListScreenState();
 }
 
-class _ClientListScreenState extends State<ClientListScreen> {
+class _ClientListScreenState extends State<ClientListScreen>
+    with WidgetsBindingObserver {
   static const _letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
   final _scrollController = ScrollController();
@@ -30,29 +31,79 @@ class _ClientListScreenState extends State<ClientListScreen> {
   String _search = '';
   String? _draggingLetter;
   bool _hasFetched = false;
+  DateTime? _backgroundedAt;
+  late final GoRouter _goRouter;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _goRouter = GoRouter.of(context);
+    _goRouter.routeInformationProvider.addListener(_onRouteChanged);
     // Attempt fetch immediately — succeeds if auth is already complete
     // (e.g. tab switch after initial load). If auth is still in progress
     // the BlocListener below will catch the AuthAuthenticated transition.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchClients());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchOnce());
   }
 
-  void _fetchClients() {
+  // Fires on every route change. Refresh whenever the clients list
+  // becomes the active screen (tab switch OR returning from add/detail).
+  void _onRouteChanged() {
+    final path = _goRouter.routeInformationProvider.value.uri.path;
+    if (path == AppRoutes.clients) _refresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _backgroundedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      final bg = _backgroundedAt;
+      _backgroundedAt = null;
+      if (bg != null && DateTime.now().difference(bg) > const Duration(minutes: 2)) {
+        _refresh();
+      }
+    }
+  }
+
+  // One-time initial fetch — skips if already done (prevents double-fire
+  // when both initState and BlocListener trigger on cold start).
+  void _fetchOnce() {
     if (_hasFetched) return;
     final authState = context.read<AuthBloc>().state;
-    if (authState is AuthAuthenticated) {
-      final proId = authState.user.proId;
-      if (proId == null) return;
-      _hasFetched = true;
-      context.read<ClientBloc>().add(ClientsFetchRequested(proId));
+    if (authState is! AuthAuthenticated) return;
+    final proId = authState.user.proId;
+    if (proId == null) return;
+    _hasFetched = true;
+    context.read<ClientBloc>().add(ClientsFetchRequested(proId));
+  }
+
+  // Explicit refresh — used by pull-to-refresh, route change, and app resume.
+  void _refresh() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is! AuthAuthenticated) return;
+    final proId = authState.user.proId;
+    if (proId == null) return;
+    context.read<ClientBloc>().add(ClientsFetchRequested(proId));
+  }
+
+  Future<void> _handleRefresh() async {
+    _refresh();
+    try {
+      await context
+          .read<ClientBloc>()
+          .stream
+          .firstWhere((s) => s is ClientsLoaded || s is ClientsError)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Timeout — dismiss spinner anyway
     }
   }
 
   @override
   void dispose() {
+    _goRouter.routeInformationProvider.removeListener(_onRouteChanged);
+    WidgetsBinding.instance.removeObserver(this);
     _scrollController.dispose();
     super.dispose();
   }
@@ -168,7 +219,7 @@ class _ClientListScreenState extends State<ClientListScreen> {
     return BlocListener<AuthBloc, AuthState>(
       // Fires when auth completes after the screen is already built (cold start).
       listenWhen: (_, curr) => curr is AuthAuthenticated,
-      listener: (context, _) => _fetchClients(),
+      listener: (context, _) => _fetchOnce(),
       child: BlocConsumer<ClientBloc, ClientsState>(
       listener: (context, state) {
         // Refresh list after a successful create (navigated back from AddClientScreen)
@@ -216,8 +267,7 @@ class _ClientListScreenState extends State<ClientListScreen> {
                   const TextSpan(text: ' lifetime work'),
                 ],
                 actions: [
-                  HeaderIconButton(
-                      icon: Icons.notifications_outlined, onTap: () {}),
+                  const NotificationBellButton(),
                 ],
                 bottom: HeaderSearchBar(
                   hint: 'Search name, address, or city',
@@ -225,14 +275,17 @@ class _ClientListScreenState extends State<ClientListScreen> {
                 ),
               ),
               Expanded(
-                child: Stack(
+                child: RefreshIndicator(
+                  onRefresh: _handleRefresh,
+                  color: AppColors.orange500,
+                  child: Stack(
                   children: [
                     if (isLoading)
                       const Center(child: CircularProgressIndicator())
                     else if (errorMessage != null)
                       _ErrorState(
                         message: errorMessage,
-                        onRetry: _fetchClients,
+                        onRetry: _refresh,
                       )
                     else if (groups.isEmpty)
                       EmptyState(
@@ -244,6 +297,7 @@ class _ClientListScreenState extends State<ClientListScreen> {
                     else
                       ListView(
                         controller: _scrollController,
+                        physics: const AlwaysScrollableScrollPhysics(),
                         padding: const EdgeInsets.only(right: 30, bottom: 96),
                         children: [
                           for (final entry in groups.entries) ...[
@@ -310,6 +364,7 @@ class _ClientListScreenState extends State<ClientListScreen> {
                       ),
                   ],
                 ),
+                ), // RefreshIndicator
               ),
             ],
           ),
