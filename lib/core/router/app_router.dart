@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../features/auth/bloc/auth_bloc.dart';
+import '../../features/auth/screens/email_verification_screen.dart';
 import '../../features/auth/screens/onboarding_screen.dart';
+import '../utils/onboarding_prefs.dart';
 import '../../features/auth/screens/sign_in_screen.dart';
 import '../../features/auth/screens/sign_up_screen.dart';
 import '../../features/clients/cubit/client_detail_cubit.dart';
@@ -19,7 +21,13 @@ import '../../features/invoices/screens/invoice_detail_screen.dart';
 import '../../features/invoices/screens/invoice_list_screen.dart';
 import '../../features/invoices/screens/new_invoice_screen.dart';
 import '../../features/invoices/screens/record_payment_screen.dart';
+import '../../features/leads/cubit/lead_detail_cubit.dart';
+import '../../features/leads/models/lead_model.dart';
+import '../../features/leads/screens/add_lead_screen.dart';
+import '../../features/leads/screens/lead_detail_screen.dart';
 import '../../features/leads/screens/leads_screen.dart';
+import '../../features/items/models/item_model.dart';
+import '../../features/items/screens/item_form_screen.dart';
 import '../../features/more/screens/about_screen.dart';
 import '../../features/more/screens/account_view_screen.dart';
 import '../../features/more/screens/company_profile_screen.dart';
@@ -35,6 +43,7 @@ abstract class AppRoutes {
   static const onboarding = '/onboarding';
   static const signIn = '/sign-in';
   static const signUp = '/sign-up';
+  static const emailVerification = '/email-verification';
 
   // Shell tabs (must start with /)
   static const estimates = '/estimates';
@@ -51,8 +60,11 @@ abstract class AppRoutes {
   static const addClient = '/clients/add';
 
   static const leads = '/leads';
+  static const leadDetail = '/leads/:id';
+  static const addLead = '/leads/add';
 
   static const more = '/more';
+  static const itemForm = '/more/items/form';
   static const settings = '/more/settings';
   static const myAccount = '/more/settings/account';
   static const accountView = '/more/account';
@@ -74,10 +86,11 @@ class AppRouter {
         final authState = authBloc.state;
         final isAuthRoute = state.matchedLocation == AppRoutes.signIn ||
             state.matchedLocation == AppRoutes.signUp ||
-            state.matchedLocation == AppRoutes.onboarding;
+            state.matchedLocation == AppRoutes.onboarding ||
+            state.matchedLocation == AppRoutes.emailVerification;
 
         if (authState is AuthUnauthenticated && !isAuthRoute) {
-          return AppRoutes.onboarding;
+          return OnboardingPrefs.seen ? AppRoutes.signIn : AppRoutes.onboarding;
         }
         if (authState is AuthAuthenticated && isAuthRoute) {
           return AppRoutes.estimates;
@@ -98,6 +111,12 @@ class AppRouter {
         GoRoute(
           path: AppRoutes.signUp,
           builder: (_, __) => const SignUpScreen(),
+        ),
+        GoRoute(
+          path: AppRoutes.emailVerification,
+          builder: (_, state) => EmailVerificationScreen(
+            email: state.extra as String? ?? '',
+          ),
         ),
 
         // Plan selection (full-screen)
@@ -204,6 +223,30 @@ class AppRouter {
                 GoRoute(
                   path: AppRoutes.leads,
                   builder: (_, __) => const LeadsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: 'add',
+                      builder: (_, state) {
+                        final extra = state.extra as Map<String, dynamic>?;
+                        return AddLeadScreen(
+                          leadToEdit: extra?['leadToEdit'] as Lead?,
+                        );
+                      },
+                    ),
+                    GoRoute(
+                      path: ':id',
+                      builder: (_, state) {
+                        final preview = state.extra as Lead?;
+                        return BlocProvider<LeadDetailCubit>(
+                          create: (_) => Injection.createLeadDetailCubit(),
+                          child: LeadDetailScreen(
+                            id: state.pathParameters['id']!,
+                            previewLead: preview,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -242,6 +285,19 @@ class AppRouter {
                     GoRoute(
                       path: 'items',
                       builder: (_, __) => const ItemsScreen(),
+                      routes: [
+                        GoRoute(
+                          path: 'form',
+                          builder: (_, state) {
+                            final extra =
+                                state.extra as Map<String, dynamic>?;
+                            return ItemFormScreen(
+                              item: extra?['item'] as Item?,
+                              proId: extra?['proId'] as int? ?? 0,
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ],
                 ),

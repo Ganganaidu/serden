@@ -24,16 +24,18 @@ class AuthSignUpRequested extends AuthEvent {
   final String confirmPassword;
   final String firstName;
   final String lastName;
+  final String turnstileToken;
   const AuthSignUpRequested({
     required this.email,
     required this.password,
     required this.confirmPassword,
     required this.firstName,
     required this.lastName,
+    required this.turnstileToken,
   });
   @override
   List<Object> get props =>
-      [email, password, confirmPassword, firstName, lastName];
+      [email, password, confirmPassword, firstName, lastName, turnstileToken];
 }
 
 class AuthSignOutRequested extends AuthEvent {

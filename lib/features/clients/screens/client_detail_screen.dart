@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/contact_launcher.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/avatar_widget.dart';
@@ -210,17 +211,17 @@ class _Header extends StatelessWidget {
                 _QuickAction(
                     icon: Icons.call_outlined,
                     label: 'Call',
-                    onTap: () {}),
+                    onTap: () => ContactLauncher.call(context, c.phoneMobile)),
                 const SizedBox(width: 8),
                 _QuickAction(
                     icon: Icons.chat_bubble_outline,
                     label: 'Text',
-                    onTap: () {}),
+                    onTap: () => ContactLauncher.text(context, c.phoneMobile)),
                 const SizedBox(width: 8),
                 _QuickAction(
                     icon: Icons.mail_outline,
                     label: 'Email',
-                    onTap: () {}),
+                    onTap: () => ContactLauncher.email(context, c.email)),
                 const SizedBox(width: 8),
                 _QuickAction(
                   icon: Icons.note_add_outlined,

@@ -4,6 +4,11 @@ class AppConstants {
   // API
   static const String baseUrl =
       'https://apiservice.lemonglacier-62b8e153.westus2.azurecontainerapps.io/api';
+
+  // Cloudflare Turnstile — register at dash.cloudflare.com → Turnstile
+  // Set turnstileBaseUrl to the domain you registered the site key for.
+  static const String turnstileSiteKey = '0x4AAAAAABnAZTScANQdHPsR';
+  static const String turnstileBaseUrl = 'https://serden.com';
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
 

@@ -53,10 +53,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       confirmPassword: event.confirmPassword,
       firstName: event.firstName,
       lastName: event.lastName,
+      turnstileToken: event.turnstileToken,
     );
     result.fold(
       (failure) => emit(AuthFailure(failure.message)),
-      (user) => emit(AuthAuthenticated(user)),
+      (_) => emit(AuthRegistered(event.email)),
     );
   }
 

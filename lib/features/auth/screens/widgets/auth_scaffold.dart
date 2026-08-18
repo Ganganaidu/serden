@@ -19,70 +19,81 @@ class AuthScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardVisible = MediaQuery.of(context).viewInsets.bottom > 50;
+
     return Scaffold(
       backgroundColor: AppColors.green800,
       resizeToAvoidBottomInset: true,
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: SafeArea(
-              bottom: false,
-              // The sheet below grows with the number of form fields (e.g.
-              // Sign Up has 4 fields vs Sign In's 2), which shrinks this
-              // Expanded area correspondingly. FittedBox scales the whole
-              // hero block down together if it doesn't fit, instead of
-              // overflowing — keeps it fully visible on short screens or
-              // with the keyboard open, at a slightly smaller size.
-              child: Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: AppColors.green700,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.1),
-                          ),
-                          borderRadius: BorderRadius.circular(15),
-                        ),
-                        child: const Text(
-                          'S',
-                          style: TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+          // Green hero — collapses when keyboard is visible so the form gets
+          // all available space above the keyboard.
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: keyboardVisible
+                ? const SizedBox.shrink()
+                : SafeArea(
+                    bottom: false,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 28),
+                      child: Center(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Container(
+                                width: 56,
+                                height: 56,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: AppColors.green700,
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.1),
+                                  ),
+                                  borderRadius: BorderRadius.circular(15),
+                                ),
+                                child: const Text(
+                                  'S',
+                                  style: TextStyle(
+                                    fontFamily: AppTextStyles.fontFamily,
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              const Padding(
+                                padding:
+                                    EdgeInsets.symmetric(horizontal: 48),
+                                child: Text(
+                                  'Join the network homeowners trust to find local pros.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontFamily: AppTextStyles.fontFamily,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.5,
+                                    color: Color(0xB3FFFFFF),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 14),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 48),
-                        child: Text(
-                          'Join the network homeowners trust to find local pros.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            height: 1.5,
-                            color: Color(0xB3FFFFFF),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
-            ),
           ),
-          _Sheet(title: title, subtitle: subtitle, children: children),
+          // Sheet fills remaining space above keyboard.
+          Expanded(
+            child: _Sheet(title: title, subtitle: subtitle, children: children),
+          ),
         ],
       ),
     );
@@ -102,7 +113,6 @@ class _Sheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 24, end: 0),
       duration: const Duration(milliseconds: 400),
@@ -116,9 +126,6 @@ class _Sheet extends StatelessWidget {
       ),
       child: Container(
         width: double.infinity,
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.78,
-        ),
         decoration: const BoxDecoration(
           color: AppColors.sheetBg,
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -135,7 +142,7 @@ class _Sheet extends StatelessWidget {
             24,
             10,
             24,
-            28 + MediaQuery.of(context).padding.bottom + bottomInset,
+            28 + MediaQuery.of(context).padding.bottom,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -177,6 +184,7 @@ class AuthField extends StatelessWidget {
   final bool obscureText;
   final Widget? suffix;
   final String? helper;
+  final String? errorText;
 
   const AuthField({
     super.key,
@@ -187,6 +195,7 @@ class AuthField extends StatelessWidget {
     this.obscureText = false,
     this.suffix,
     this.helper,
+    this.errorText,
   });
 
   @override
@@ -206,15 +215,12 @@ class AuthField extends StatelessWidget {
             decoration: InputDecoration(
               hintText: hint,
               suffixIcon: suffix,
+              helperText: helper,
+              helperMaxLines: 3,
+              errorText: errorText,
+              errorMaxLines: 3,
             ),
           ),
-          if (helper != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              helper!,
-              style: AppTextStyles.caption.copyWith(fontSize: 12),
-            ),
-          ],
         ],
       ),
     );

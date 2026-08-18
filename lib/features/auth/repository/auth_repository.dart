@@ -12,16 +12,19 @@ import '../models/user_model.dart';
 
 abstract class AuthRepository {
   Future<Either<Failure, UserModel>> signIn(String email, String password);
-  Future<Either<Failure, UserModel>> signUp({
+  Future<Either<Failure, void>> signUp({
     required String email,
     required String password,
     required String confirmPassword,
     required String firstName,
     required String lastName,
+    required String turnstileToken,
   });
   Future<Either<Failure, void>> signOut();
   Future<Either<Failure, UserModel>> getCurrentUser();
   Future<bool> isAuthenticated();
+  Future<Either<Failure, void>> forgotPassword(
+      String email, {required String turnstileToken});
 }
 
 class AuthRepositoryImpl implements AuthRepository {
@@ -135,24 +138,21 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<Either<Failure, UserModel>> signUp({
+  Future<Either<Failure, void>> signUp({
     required String email,
     required String password,
     required String confirmPassword,
     required String firstName,
     required String lastName,
+    required String turnstileToken,
   }) async {
     AppLogger.auth('signUp: attempting for $email');
     if (_useMock) {
       await Future.delayed(const Duration(milliseconds: 800));
-      await _storage.write(AppConstants.accessTokenKey, 'mock_access_token');
-      await _storage.write(AppConstants.refreshTokenKey, 'mock_refresh_token');
       AppLogger.auth('signUp: mock success for $email');
-      return Right(_mockUser(email));
+      return const Right(null);
     }
     try {
-      // Registration has no separate username field in the UI — the email
-      // doubles as the username, which also becomes the login identifier.
       await _apiClient.post(
         '/Users/register',
         data: {
@@ -162,10 +162,11 @@ class AuthRepositoryImpl implements AuthRepository {
           'confirmPassword': confirmPassword,
           'firstName': firstName,
           'lastName': lastName,
+          'turnstileToken': turnstileToken,
         },
       );
-      AppLogger.auth('signUp: registered $email — signing in');
-      return signIn(email, password);
+      AppLogger.auth('signUp: registered $email — email verification required');
+      return const Right(null);
     } on ServerException catch (e) {
       AppLogger.auth('signUp: server failure (${e.statusCode}) — ${e.message}');
       return Left(ServerFailure(e.message, statusCode: e.statusCode));
@@ -249,5 +250,29 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<bool> isAuthenticated() async {
     final token = await _storage.read(AppConstants.accessTokenKey);
     return token != null;
+  }
+
+  @override
+  Future<Either<Failure, void>> forgotPassword(
+      String email, {required String turnstileToken}) async {
+    AppLogger.auth('forgotPassword: requesting reset for $email');
+    if (_useMock) {
+      await Future.delayed(const Duration(milliseconds: 800));
+      return const Right(null);
+    }
+    try {
+      await _apiClient.post(
+        '/Users/forgot-password',
+        data: {'email': email, 'turnstileToken': turnstileToken},
+      );
+      return const Right(null);
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('forgotPassword: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
   }
 }

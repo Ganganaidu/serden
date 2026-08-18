@@ -39,9 +39,11 @@ class ApiClient {
     }
   }
 
-  Future<Response> post(String path, {dynamic data}) async {
+  Future<Response> post(String path,
+      {dynamic data, Map<String, dynamic>? queryParams}) async {
     try {
-      final response = await _dio.post(path, data: data);
+      final response =
+          await _dio.post(path, data: data, queryParameters: queryParams);
       _logSuccess('POST', path, response);
       return response;
     } on DioException catch (e) {
@@ -49,9 +51,11 @@ class ApiClient {
     }
   }
 
-  Future<Response> put(String path, {dynamic data}) async {
+  Future<Response> put(String path,
+      {dynamic data, Map<String, dynamic>? queryParams}) async {
     try {
-      final response = await _dio.put(path, data: data);
+      final response =
+          await _dio.put(path, data: data, queryParameters: queryParams);
       _logSuccess('PUT', path, response);
       return response;
     } on DioException catch (e) {
@@ -59,9 +63,11 @@ class ApiClient {
     }
   }
 
-  Future<Response> patch(String path, {dynamic data}) async {
+  Future<Response> patch(String path,
+      {dynamic data, Map<String, dynamic>? queryParams}) async {
     try {
-      final response = await _dio.patch(path, data: data);
+      final response =
+          await _dio.patch(path, data: data, queryParameters: queryParams);
       _logSuccess('PATCH', path, response);
       return response;
     } on DioException catch (e) {
@@ -69,9 +75,11 @@ class ApiClient {
     }
   }
 
-  Future<Response> delete(String path) async {
+  Future<Response> delete(String path,
+      {Map<String, dynamic>? queryParams}) async {
     try {
-      final response = await _dio.delete(path);
+      final response =
+          await _dio.delete(path, queryParameters: queryParams);
       _logSuccess('DELETE', path, response);
       return response;
     } on DioException catch (e) {

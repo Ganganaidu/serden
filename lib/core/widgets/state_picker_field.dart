@@ -142,7 +142,7 @@ class _StatePickerSheetState extends State<_StatePickerSheet> {
             child: TextField(
               controller: _searchCtrl,
               onChanged: _onSearch,
-              autofocus: true,
+              autofocus: false,
               style:
                   AppTextStyles.rowTitle.copyWith(fontWeight: FontWeight.w600),
               decoration: InputDecoration(
