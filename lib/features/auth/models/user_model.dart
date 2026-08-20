@@ -35,14 +35,20 @@ class UserModel extends Equatable {
 
   String get fullName => '$firstName $lastName'.trim();
 
-  UserModel copyWith({int? proId}) => UserModel(
+  UserModel copyWith({
+    int? proId,
+    String? firstName,
+    String? lastName,
+    String? email,
+  }) =>
+      UserModel(
         userId: userId,
         proId: proId ?? this.proId,
         publicId: publicId,
         username: username,
-        email: email,
-        firstName: firstName,
-        lastName: lastName,
+        email: email ?? this.email,
+        firstName: firstName ?? this.firstName,
+        lastName: lastName ?? this.lastName,
         role: role,
         subscriptionStatus: subscriptionStatus,
         subscriptionEndDate: subscriptionEndDate,

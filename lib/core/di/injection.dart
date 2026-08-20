@@ -10,6 +10,8 @@ import '../../features/items/repository/item_repository.dart';
 import '../../features/leads/bloc/lead_bloc.dart';
 import '../../features/leads/cubit/lead_detail_cubit.dart';
 import '../../features/leads/repository/lead_repository.dart';
+import '../../features/more/cubit/account_view_cubit.dart';
+import '../../features/more/cubit/my_account_cubit.dart';
 import '../../features/notifications/cubit/notifications_cubit.dart';
 import '../../features/notifications/repository/notification_repository.dart';
 import '../../features/reviews/cubit/reviews_cubit.dart';
@@ -89,4 +91,10 @@ class Injection {
 
   static TaxesCubit createTaxesCubit() =>
       TaxesCubit(repository: _taxRepository);
+
+  static MyAccountCubit createMyAccountCubit() =>
+      MyAccountCubit(repository: _authRepository);
+
+  static AccountViewCubit createAccountViewCubit() =>
+      AccountViewCubit(apiClient: _apiClient);
 }

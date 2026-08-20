@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/ios_contact_picker.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/avatar_widget.dart';
@@ -109,6 +111,44 @@ class _AddClientScreenState extends State<AddClientScreen> {
       );
       return;
     }
+
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await _pickContactIOS();
+    } else {
+      await _pickContactAndroid();
+    }
+  }
+
+  // Uses a native method channel that correctly finds the top view controller,
+  // avoiding the "not in window hierarchy" error in flutter_contacts 1.1.9 on iOS 15+.
+  Future<void> _pickContactIOS() async {
+    final picked = await IosContactPicker.pick();
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (picked.displayName.isNotEmpty) _name.text = picked.displayName;
+      // Always overwrite — clear the field if the new contact has no value
+      _email.text = picked.email ?? '';
+      if (picked.phones.isNotEmpty) {
+        final mobile = picked.phones.firstWhere(
+          (p) => p.isMobile,
+          orElse: () => picked.phones.first,
+        );
+        _phoneMobile.text = mobile.number.trim();
+        final others = picked.phones.where((p) => p != mobile).toList();
+        _phoneOther.text = others.isNotEmpty ? others.first.number.trim() : '';
+      } else {
+        _phoneMobile.text = '';
+        _phoneOther.text = '';
+      }
+      _address.text  = picked.street;
+      _address2.text = picked.subLocality;
+      _city.text     = picked.city;
+      _state.text    = picked.state;
+      _zip.text      = picked.postalCode;
+    });
+  }
+
+  Future<void> _pickContactAndroid() async {
     final contact = await FlutterContacts.openExternalPick();
     if (contact == null || !mounted) return;
     final full = await FlutterContacts.getContact(contact.id,
@@ -117,7 +157,8 @@ class _AddClientScreenState extends State<AddClientScreen> {
     setState(() {
       final display = full.displayName.trim();
       if (display.isNotEmpty) _name.text = display;
-      if (full.emails.isNotEmpty) _email.text = full.emails.first.address.trim();
+      // Always overwrite — clear the field if the new contact has no value
+      _email.text = full.emails.isNotEmpty ? full.emails.first.address.trim() : '';
       if (full.phones.isNotEmpty) {
         final mobile = full.phones.firstWhere(
           (p) => p.label == PhoneLabel.mobile || p.label == PhoneLabel.iPhone,
@@ -125,7 +166,10 @@ class _AddClientScreenState extends State<AddClientScreen> {
         );
         _phoneMobile.text = mobile.number.trim();
         final others = full.phones.where((p) => p != mobile).toList();
-        if (others.isNotEmpty) _phoneOther.text = others.first.number.trim();
+        _phoneOther.text = others.isNotEmpty ? others.first.number.trim() : '';
+      } else {
+        _phoneMobile.text = '';
+        _phoneOther.text = '';
       }
       if (full.addresses.isNotEmpty) {
         final addr = full.addresses.first;
@@ -134,6 +178,12 @@ class _AddClientScreenState extends State<AddClientScreen> {
         _city.text     = addr.city.trim();
         _state.text    = addr.state.trim();
         _zip.text      = addr.postalCode.trim();
+      } else {
+        _address.text  = '';
+        _address2.text = '';
+        _city.text     = '';
+        _state.text    = '';
+        _zip.text      = '';
       }
     });
   }

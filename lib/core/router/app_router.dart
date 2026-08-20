@@ -28,6 +28,8 @@ import '../../features/leads/screens/lead_detail_screen.dart';
 import '../../features/leads/screens/leads_screen.dart';
 import '../../features/items/models/item_model.dart';
 import '../../features/items/screens/item_form_screen.dart';
+import '../../features/more/cubit/account_view_cubit.dart';
+import '../../features/more/cubit/my_account_cubit.dart';
 import '../../features/more/screens/about_screen.dart';
 import '../../features/more/screens/account_view_screen.dart';
 import '../../features/more/screens/company_profile_screen.dart';
@@ -274,7 +276,10 @@ class AppRouter {
                       routes: [
                         GoRoute(
                           path: 'account',
-                          builder: (_, __) => const MyAccountScreen(),
+                          builder: (_, __) => BlocProvider<MyAccountCubit>(
+                            create: (_) => Injection.createMyAccountCubit(),
+                            child: const MyAccountScreen(),
+                          ),
                         ),
                         GoRoute(
                           path: 'about',
@@ -284,7 +289,10 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: 'account',
-                      builder: (_, __) => const AccountViewScreen(),
+                      builder: (_, __) => BlocProvider<AccountViewCubit>(
+                        create: (_) => Injection.createAccountViewCubit(),
+                        child: const AccountViewScreen(),
+                      ),
                     ),
                     GoRoute(
                       path: 'company-profile',

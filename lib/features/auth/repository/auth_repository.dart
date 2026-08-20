@@ -25,6 +25,17 @@ abstract class AuthRepository {
   Future<bool> isAuthenticated();
   Future<Either<Failure, void>> forgotPassword(
       String email, {required String turnstileToken});
+  Future<Either<Failure, UserModel>> updateUser({
+    required int userId,
+    required String firstName,
+    required String lastName,
+    required String email,
+  });
+  Future<Either<Failure, void>> changePassword({
+    required String email,
+    required String currentPassword,
+    required String newPassword,
+  });
 }
 
 class AuthRepositoryImpl implements AuthRepository {
@@ -250,6 +261,97 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<bool> isAuthenticated() async {
     final token = await _storage.read(AppConstants.accessTokenKey);
     return token != null;
+  }
+
+  @override
+  Future<Either<Failure, UserModel>> updateUser({
+    required int userId,
+    required String firstName,
+    required String lastName,
+    required String email,
+  }) async {
+    AppLogger.auth('updateUser: userId=$userId');
+    if (_useMock) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      final cached = await _storage.read(AppConstants.userKey);
+      final base = cached != null
+          ? UserModel.fromJson(jsonDecode(cached) as Map<String, dynamic>)
+          : _mockUser(email);
+      final updated =
+          base.copyWith(firstName: firstName, lastName: lastName, email: email);
+      await _storage.write(AppConstants.userKey, jsonEncode(updated.toJson()));
+      return Right(updated);
+    }
+    try {
+      await _apiClient.put(
+        '/Users/$userId',
+        data: {
+          'userId': userId,
+          'userName': email,
+          'email': email,
+          'firstName': firstName,
+          'lastName': lastName,
+        },
+      );
+      // Refresh the user from the server to get the canonical state
+      final response = await _apiClient.get('/Users/$userId');
+      final rawUser =
+          UserModel.fromJson(response.data as Map<String, dynamic>);
+      final cached = await _storage.read(AppConstants.userKey);
+      final cachedProId = cached != null
+          ? (jsonDecode(cached) as Map<String, dynamic>)['proId'] as int?
+          : null;
+      final updated = cachedProId != null
+          ? rawUser.copyWith(proId: cachedProId)
+          : rawUser;
+      await _storage.write(AppConstants.userKey, jsonEncode(updated.toJson()));
+      AppLogger.auth('updateUser: success for userId=$userId');
+      return Right(updated);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      AppLogger.auth('updateUser: server failure — ${e.message}');
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('updateUser: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> changePassword({
+    required String email,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    AppLogger.auth('changePassword: for $email');
+    if (_useMock) {
+      await Future.delayed(const Duration(milliseconds: 600));
+      return const Right(null);
+    }
+    try {
+      await _apiClient.post(
+        '/Users/change-password',
+        data: {
+          'email': email,
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        },
+      );
+      return const Right(null);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      AppLogger.auth('changePassword: server failure — ${e.message}');
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('changePassword: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
   }
 
   @override
