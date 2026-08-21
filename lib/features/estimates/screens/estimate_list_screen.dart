@@ -246,9 +246,7 @@ class _EstimatesWelcomeViewState extends State<_EstimatesWelcomeView> {
       case 'estimate':
         context.push(AppRoutes.newEstimate);
       default:
-        setState(() {
-          _done.contains(key) ? _done.remove(key) : _done.add(key);
-        });
+        break;
     }
   }
 

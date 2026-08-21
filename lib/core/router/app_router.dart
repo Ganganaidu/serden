@@ -29,6 +29,7 @@ import '../../features/leads/screens/leads_screen.dart';
 import '../../features/items/models/item_model.dart';
 import '../../features/items/screens/item_form_screen.dart';
 import '../../features/more/cubit/account_view_cubit.dart';
+import '../../features/more/cubit/company_profile_cubit.dart';
 import '../../features/more/cubit/my_account_cubit.dart';
 import '../../features/more/screens/about_screen.dart';
 import '../../features/more/screens/account_view_screen.dart';
@@ -289,14 +290,27 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: 'account',
-                      builder: (_, __) => BlocProvider<AccountViewCubit>(
-                        create: (_) => Injection.createAccountViewCubit(),
+                      builder: (_, __) => MultiBlocProvider(
+                        providers: [
+                          BlocProvider<AccountViewCubit>(
+                            create: (_) =>
+                                Injection.createAccountViewCubit(),
+                          ),
+                          BlocProvider<MyAccountCubit>(
+                            create: (_) =>
+                                Injection.createMyAccountCubit(),
+                          ),
+                        ],
                         child: const AccountViewScreen(),
                       ),
                     ),
                     GoRoute(
                       path: 'company-profile',
-                      builder: (_, __) => const CompanyProfileScreen(),
+                      builder: (_, __) => BlocProvider<CompanyProfileCubit>(
+                        create: (_) =>
+                            Injection.createCompanyProfileCubit(),
+                        child: const CompanyProfileScreen(),
+                      ),
                     ),
                     GoRoute(
                       path: 'reviews',

@@ -5,6 +5,19 @@ class AppConstants {
   static const String baseUrl =
       'https://apiservice.lemonglacier-62b8e153.westus2.azurecontainerapps.io/api';
 
+  /// Origin used to construct image URLs from bare filenames the API returns
+  /// (e.g. proLogo, projectPhoto filenames).  Strip "/api" from [baseUrl].
+  static const String _serverOrigin =
+      'https://apiservice.lemonglacier-62b8e153.westus2.azurecontainerapps.io';
+
+  /// Full URL for a pro logo filename returned by the API.
+  static String proLogoUrl(String fileName) =>
+      '$_serverOrigin/uploads/$fileName';
+
+  /// Full URL for a project photo filename returned by the API.
+  static String projectPhotoUrl(String fileName) =>
+      '$_serverOrigin/uploads/$fileName';
+
   // Cloudflare Turnstile — register at dash.cloudflare.com → Turnstile
   // Set turnstileBaseUrl to the domain you registered the site key for.
   static const String turnstileSiteKey = '0x4AAAAAABnAZTScANQdHPsR';
