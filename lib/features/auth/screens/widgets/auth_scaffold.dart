@@ -140,24 +140,13 @@ class _Sheet extends StatelessWidget {
         child: SingleChildScrollView(
           padding: EdgeInsets.fromLTRB(
             24,
-            10,
+            28,
             24,
             28 + MediaQuery.of(context).padding.bottom,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 18),
-                  decoration: BoxDecoration(
-                    color: AppColors.grabber,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
               Text(title, style: AppTextStyles.headingLarge),
               const SizedBox(height: 4),
               Text(

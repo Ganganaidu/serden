@@ -1417,14 +1417,16 @@ class _AddHighlightSheetState extends State<_AddHighlightSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, 20, 20, 32 + bottomInset),
-      decoration: const BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
       ),
-      child: SingleChildScrollView(
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        decoration: const BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1474,11 +1476,14 @@ class _AddHighlightSheetState extends State<_AddHighlightSheet> {
             const SizedBox(height: 8),
             TextField(
               controller: _ctrl,
-              autofocus: true,
+
               textCapitalization: TextCapitalization.words,
               style: AppTextStyles.rowTitle
                   .copyWith(fontWeight: FontWeight.w600),
               decoration: InputDecoration(
+                hint: Text("e.g. Free Estimates, 24/7 Service",
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.inkFaint)),
                 isDense: true,
                 filled: true,
                 fillColor: AppColors.page,
@@ -1500,49 +1505,53 @@ class _AddHighlightSheetState extends State<_AddHighlightSheet> {
             const Divider(color: AppColors.line),
             const SizedBox(height: 8),
             Row(
-              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    shape: const StadiumBorder(),
-                    side: const BorderSide(color: AppColors.line),
-                    foregroundColor: AppColors.ink,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 22, vertical: 12),
-                    textStyle: const TextStyle(
-                      fontFamily: AppTextStyles.fontFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      shape: const StadiumBorder(),
+                      side: const BorderSide(color: AppColors.line),
+                      foregroundColor: AppColors.ink,
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 14),
+                      textStyle: const TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
+                    child: const Text('Close'),
                   ),
-                  child: const Text('Close'),
                 ),
                 const SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: () {
-                    final name = _ctrl.text.trim();
-                    if (name.isNotEmpty) Navigator.pop(context, name);
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.greenDeep,
-                    foregroundColor: Colors.white,
-                    shape: const StadiumBorder(),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 22, vertical: 12),
-                    elevation: 0,
-                    textStyle: const TextStyle(
-                      fontFamily: AppTextStyles.fontFamily,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final name = _ctrl.text.trim();
+                      if (name.isNotEmpty) Navigator.pop(context, name);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.greenDeep,
+                      foregroundColor: Colors.white,
+                      shape: const StadiumBorder(),
+                      padding:
+                          const EdgeInsets.symmetric(vertical: 14),
+                      elevation: 0,
+                      textStyle: const TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                    child: const Text('Add Highlight'),
                   ),
-                  child: const Text('Add Highlight'),
                 ),
               ],
             ),
           ],
         ),
-      );
+      ),
+    );
   }
 }
