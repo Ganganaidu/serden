@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_card.dart';
@@ -8,6 +10,13 @@ import '../../../core/widgets/main_shell.dart';
 
 class AboutScreen extends StatelessWidget {
   const AboutScreen({super.key});
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,13 +63,18 @@ class AboutScreen extends StatelessWidget {
                 const SectionHeader(title: 'App'),
                 AppCard(
                   child: Column(
-                    children: const [
-                      _AboutRow(label: 'Version', value: '4.2.1'),
-                      _AboutRow(label: 'Terms of Service', chevron: true),
+                    children: [
+                      const _AboutRow(label: 'Version', value: '4.2.1'),
+                      _AboutRow(
+                        label: 'Terms of Service',
+                        chevron: true,
+                        onTap: () => _openUrl(AppConstants.termsOfUseUrl),
+                      ),
                       _AboutRow(
                         label: 'Privacy Policy',
                         chevron: true,
                         showDivider: false,
+                        onTap: () => _openUrl(AppConstants.privacyPolicyUrl),
                       ),
                     ],
                   ),
@@ -79,18 +93,20 @@ class _AboutRow extends StatelessWidget {
   final String? value;
   final bool chevron;
   final bool showDivider;
+  final VoidCallback? onTap;
 
   const _AboutRow({
     required this.label,
     this.value,
     this.chevron = false,
     this.showDivider = true,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      onTap: chevron ? () {} : null,
+      onTap: onTap ?? (chevron ? () {} : null),
       child: Container(
         decoration: BoxDecoration(
           border: showDivider

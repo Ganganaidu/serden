@@ -8,7 +8,12 @@ import '../../../../core/theme/app_text_styles.dart';
 /// Bottom sheet that runs a Cloudflare Turnstile challenge inside a WebView.
 /// Pops with the token string on success, or null if the user cancels.
 class TurnstileSheet extends StatefulWidget {
-  const TurnstileSheet({super.key});
+  final String subtitle;
+
+  const TurnstileSheet({
+    super.key,
+    this.subtitle = 'One quick verification before we create your account.',
+  });
 
   @override
   State<TurnstileSheet> createState() => _TurnstileSheetState();
@@ -101,7 +106,7 @@ class _TurnstileSheetState extends State<TurnstileSheet> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'One quick verification before we create your account.',
+                    widget.subtitle,
                     textAlign: TextAlign.center,
                     style: AppTextStyles.bodyMedium
                         .copyWith(color: AppColors.inkSoft),

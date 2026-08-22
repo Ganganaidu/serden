@@ -96,7 +96,7 @@ class CompanyProfile extends Equatable {
         website: json['website'] as String?,
         licenseNumber: json['licenseNumber'] as String?,
         insuranceNumber: json['insuranceNumber'] as String?,
-        yearFounded: json['yearFounded'] as String?,
+        yearFounded: json['yearFounded']?.toString(),
         businessHours: json['businessHours'] as String?,
         areaServed: json['areaServed'] as String?,
         serviceCategories: (json['serviceCategories'] as List<dynamic>?)
@@ -133,7 +133,9 @@ class CompanyProfile extends Equatable {
         'website': website ?? '',
         'licenseNumber': licenseNumber ?? '',
         'insuranceNumber': insuranceNumber ?? '',
-        'yearFounded': yearFounded ?? '',
+        'yearFounded': yearFounded != null && yearFounded!.isNotEmpty
+            ? int.tryParse(yearFounded!)
+            : null,
         'businessHours': businessHours ?? '',
         'areaServed': areaServed ?? '',
         'serviceCategories': serviceCategories,

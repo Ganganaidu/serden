@@ -83,7 +83,7 @@ class MoreScreen extends StatelessWidget {
                         icon: Icons.help_outline,
                         grayIcon: true,
                         title: 'Get help / contact',
-                        onTap: () {},
+                        onTap: () => context.push(AppRoutes.contactUs),
                       ),
                       CardRow(
                         icon: Icons.info_outline,

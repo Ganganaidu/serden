@@ -22,6 +22,9 @@ class AppConstants {
   // Set turnstileBaseUrl to the domain you registered the site key for.
   static const String turnstileSiteKey = '0x4AAAAAABnAZTScANQdHPsR';
   static const String turnstileBaseUrl = 'https://serden.com';
+  static const String serviceUrl = 'https://serden.com';
+  static const String privacyPolicyUrl = '$serviceUrl/page/privacy-policy';
+  static const String termsOfUseUrl = '$serviceUrl/page/terms-of-use';
   static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30);
 

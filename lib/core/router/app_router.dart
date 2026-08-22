@@ -31,7 +31,9 @@ import '../../features/items/screens/item_form_screen.dart';
 import '../../features/more/cubit/account_view_cubit.dart';
 import '../../features/more/cubit/company_profile_cubit.dart';
 import '../../features/more/cubit/my_account_cubit.dart';
+import '../../features/more/cubit/contact_us_cubit.dart';
 import '../../features/more/screens/about_screen.dart';
+import '../../features/more/screens/contact_us_screen.dart';
 import '../../features/more/screens/account_view_screen.dart';
 import '../../features/more/screens/company_profile_screen.dart';
 import '../../features/more/screens/items_screen.dart';
@@ -83,6 +85,7 @@ abstract class AppRoutes {
   static const notifications = '/notifications';
   static const taxes = '/more/taxes';
   static const markups = '/more/markups';
+  static const contactUs = '/more/contact';
 }
 
 class AppRouter {
@@ -323,6 +326,13 @@ class AppRouter {
                     GoRoute(
                       path: 'markups',
                       builder: (_, __) => const MarkupsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'contact',
+                      builder: (_, __) => BlocProvider<ContactUsCubit>(
+                        create: (_) => Injection.createContactUsCubit(),
+                        child: const ContactUsScreen(),
+                      ),
                     ),
                     GoRoute(
                       path: 'items',

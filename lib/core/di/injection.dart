@@ -12,8 +12,10 @@ import '../../features/leads/cubit/lead_detail_cubit.dart';
 import '../../features/leads/repository/lead_repository.dart';
 import '../../features/more/cubit/account_view_cubit.dart';
 import '../../features/more/cubit/company_profile_cubit.dart';
+import '../../features/more/cubit/contact_us_cubit.dart';
 import '../../features/more/cubit/my_account_cubit.dart';
 import '../../features/more/repository/company_profile_repository.dart';
+import '../../features/more/repository/contact_us_repository.dart';
 import '../../features/notifications/cubit/notifications_cubit.dart';
 import '../../features/notifications/repository/notification_repository.dart';
 import '../../features/reviews/cubit/reviews_cubit.dart';
@@ -41,6 +43,7 @@ class Injection {
   static late ReviewRepository _reviewRepository;
   static late TaxRepository _taxRepository;
   static late CompanyProfileRepository _companyProfileRepository;
+  static late ContactUsRepository _contactUsRepository;
 
   static void init() {
     _secureStorage = SecureStorage();
@@ -59,6 +62,7 @@ class Injection {
     _taxRepository = TaxRepositoryImpl(apiClient: _apiClient);
     _companyProfileRepository =
         CompanyProfileRepositoryImpl(apiClient: _apiClient);
+    _contactUsRepository = ContactUsRepositoryImpl(apiClient: _apiClient);
   }
 
   static SecureStorage get secureStorage => _secureStorage;
@@ -105,4 +109,7 @@ class Injection {
 
   static CompanyProfileCubit createCompanyProfileCubit() =>
       CompanyProfileCubit(repository: _companyProfileRepository);
+
+  static ContactUsCubit createContactUsCubit() =>
+      ContactUsCubit(repository: _contactUsRepository);
 }
