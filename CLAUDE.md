@@ -100,7 +100,7 @@ Always use:
 | `HeaderSearchBar` / `HeaderIconButton` | `core/widgets/main_shell.dart` | Search bar / icon buttons inside AppHeader |
 | `DetailHeader` | `core/widgets/main_shell.dart` | Compact green header with back label |
 | `StatusChip` | `core/widgets/status_badge.dart` | Viewed / Sent / Draft / Paid / Overdue chips |
-| `PillTabs` | `core/widgets/pill_tabs.dart` | Pending/Approved/Declined style tabs |
+| `PillTabs` | `core/widgets/pill_tabs.dart` | Underline tab strip (Pending/Approved/Declined, Active/Overdue/Paid, …) |
 | `AppCard` / `CardRow` | `core/widgets/app_card.dart` | White cards and menu rows |
 | `AppFab` | `core/widgets/app_fab.dart` | Orange extended FAB |
 | `FormNavBar` | `core/widgets/form_nav_bar.dart` | Cancel · title · Save form top bar |

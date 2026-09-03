@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/di/injection.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/form_nav_bar.dart';
 import '../../core/widgets/loading_overlay.dart';
+import '../../features/auth/bloc/auth_bloc.dart';
+import '../../features/clients/models/client_model.dart';
+import '../../features/estimates/bloc/estimate_bloc.dart';
+import '../../features/estimates/models/estimate_model.dart';
 
 /// Editable line item on the new estimate / invoice form.
 class LineItemDraft {
@@ -14,7 +20,15 @@ class LineItemDraft {
   int qty;
   double price;
 
-  LineItemDraft({this.name = '', this.qty = 1, this.price = 0});
+  /// Id of the existing API line item, when editing. 0 for new rows.
+  int existingId;
+
+  LineItemDraft({
+    this.name = '',
+    this.qty = 1,
+    this.price = 0,
+    this.existingId = 0,
+  });
 
   double get total => qty * price;
 }
@@ -26,10 +40,15 @@ class DocumentForm extends StatefulWidget {
   final bool isInvoice;
   final int documentNumber;
 
+  /// When set, the form opens in edit mode for this estimate and Save
+  /// dispatches [EstimateUpdateRequested] instead of create. Estimates only.
+  final Estimate? estimateToEdit;
+
   const DocumentForm({
     super.key,
     required this.isInvoice,
     required this.documentNumber,
+    this.estimateToEdit,
   });
 
   @override
@@ -39,6 +58,11 @@ class DocumentForm extends StatefulWidget {
 class _DocumentFormState extends State<DocumentForm> {
   final List<LineItemDraft> _items = [LineItemDraft()];
   final Set<String> _openBlocks = {};
+
+  Client? _selectedClient;
+  bool _submitting = false;
+
+  bool get _isEdit => widget.estimateToEdit != null;
 
   // Optional adjustment rows (visible after tapping a chip).
   final Set<String> _activeAdjustments = {};
@@ -58,7 +82,60 @@ class _DocumentFormState extends State<DocumentForm> {
   int _validDays = 30;
   String _paymentTerms = 'Due on receipt';
 
-  String get _docWord => widget.isInvoice ? 'invoice' : 'estimate';
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.estimateToEdit;
+    if (e == null) return;
+
+    if (e.clientId != null) {
+      _selectedClient = Client(
+        clientId: e.clientId!,
+        proId: e.proId,
+        name: e.clientName?.trim().isNotEmpty == true
+            ? e.clientName!
+            : 'Client',
+      );
+    }
+
+    final items = e.allLineItems..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    if (items.isNotEmpty) {
+      _items
+        ..clear()
+        ..addAll(items.map((li) => LineItemDraft(
+              name: li.description,
+              qty: li.quantity,
+              price: li.unitPrice,
+              existingId: li.lineItemId,
+            )));
+    }
+
+    _groupSections = e.groupItemsIntoSections;
+    _clientSignature = e.showClientSignature;
+    _mySignature = e.showMySignature;
+
+    if ((e.discountValue ?? 0) > 0) {
+      _activeAdjustments.add('discount');
+      _discount = e.discountValue!;
+    }
+    if ((e.markupValue ?? 0) > 0) {
+      _activeAdjustments.add('markup');
+      _markup = e.markupValue!;
+    }
+    if ((e.taxRate ?? 0) > 0) {
+      _activeAdjustments.add('tax');
+      _taxPct = e.taxRate!;
+    }
+    if ((e.depositValue ?? 0) > 0) {
+      _activeAdjustments.add('deposit');
+      _depositPct = e.depositValue!;
+    }
+    if (e.expirationDate != null) {
+      _allowExpire = true;
+      _validDays = e.expirationDate!.difference(e.estimateDate).inDays.abs();
+      if (_validDays == 0) _validDays = 30;
+    }
+  }
 
   double get _subtotal =>
       _items.fold(0, (sum, item) => sum + item.total);
@@ -79,12 +156,45 @@ class _DocumentFormState extends State<DocumentForm> {
     return 'Total (USD)';
   }
 
+  String get _navTitle {
+    if (widget.isInvoice) return 'New invoice';
+    return _isEdit ? 'Edit estimate' : 'New estimate';
+  }
+
   @override
   Widget build(BuildContext context) {
+    return BlocListener<EstimateBloc, EstimatesState>(
+      listenWhen: (_, __) => _submitting,
+      listener: (context, state) {
+        if (state is EstimateMutateSuccess) {
+          setState(() => _submitting = false);
+          if (state.estimate != null) {
+            context.pop({'estimate': state.estimate});
+          } else {
+            context.pop();
+          }
+        } else if (state is EstimateMutateFailure) {
+          setState(() => _submitting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.orangeDeep,
+            ),
+          );
+        }
+      },
+      child: LoadingOverlay(
+        isLoading: _submitting,
+        child: _buildScaffold(context),
+      ),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     return Scaffold(
       appBar: FormNavBar(
-        title: widget.isInvoice ? 'New invoice' : 'New estimate',
-        subtitle: '#${widget.documentNumber} · Draft saved',
+        title: _navTitle,
+        subtitle: '#${widget.documentNumber} · ${_isEdit ? 'Editing' : 'Draft saved'}',
       ),
       body: Column(
         children: [
@@ -98,9 +208,9 @@ class _DocumentFormState extends State<DocumentForm> {
                 AppCard(
                   child: _AddRow(
                     icon: Icons.person_outline,
-                    label: 'Add client',
+                    label: _selectedClient?.name ?? 'Add client',
                     showChevron: true,
-                    onTap: () {},
+                    onTap: _pickClient,
                   ),
                 ),
                 const SectionHeader(title: 'Line items'),
@@ -656,6 +766,119 @@ class _DocumentFormState extends State<DocumentForm> {
     });
   }
 
+  // ---- Client picker -------------------------------------------------
+
+  int? get _proId {
+    final authState = context.read<AuthBloc>().state;
+    return authState is AuthAuthenticated ? authState.user.proId : null;
+  }
+
+  Future<void> _pickClient() async {
+    final proId = _proId;
+    if (proId == null) return;
+    final picked = await showModalBottomSheet<Client>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _ClientPickerSheet(proId: proId),
+    );
+    if (picked != null) setState(() => _selectedClient = picked);
+  }
+
+  // ---- Submit -------------------------------------------------------
+
+  void _submit() {
+    if (widget.isInvoice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Sending invoices will be wired to the API.')),
+      );
+      context.pop();
+      return;
+    }
+
+    final proId = _proId;
+    if (proId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please sign in again.')),
+      );
+      return;
+    }
+    if (_selectedClient == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a client before saving.')),
+      );
+      return;
+    }
+
+    final base = widget.estimateToEdit;
+    final estimateDate = base?.estimateDate ?? DateTime.now();
+
+    final lineItems = <EstimateLineItem>[];
+    for (var i = 0; i < _items.length; i++) {
+      final it = _items[i];
+      if (it.name.trim().isEmpty && it.price == 0) continue;
+      lineItems.add(EstimateLineItem(
+        lineItemId: it.existingId,
+        description: it.name.trim(),
+        unitPrice: it.price,
+        quantity: it.qty,
+        total: it.total,
+        sortOrder: i,
+        isTaxable: _activeAdjustments.contains('tax'),
+      ));
+    }
+
+    final markupActive =
+        _activeAdjustments.contains('markup') && _markup > 0;
+    final discountActive =
+        _activeAdjustments.contains('discount') && _discount > 0;
+    final taxActive = _activeAdjustments.contains('tax') && _taxPct > 0;
+    final depositActive =
+        _activeAdjustments.contains('deposit') && _depositPct > 0;
+
+    final estimate = Estimate(
+      estimateId: base?.estimateId ?? 0,
+      publicId: base?.publicId,
+      proId: proId,
+      clientId: _selectedClient!.clientId,
+      clientName: _selectedClient!.name,
+      estimateNumber: base?.estimateNumber ??
+          (widget.documentNumber > 0
+              ? widget.documentNumber.toString()
+              : null),
+      estimateDate: estimateDate,
+      expirationDate: _allowExpire
+          ? estimateDate.add(Duration(days: _validDays))
+          : base?.expirationDate,
+      groupItemsIntoSections: _groupSections,
+      subtotal: _subtotal,
+      markupType: markupActive ? AmountType.fixed.apiValue : null,
+      markupValue: markupActive ? _markup : null,
+      discountType: discountActive ? AmountType.fixed.apiValue : null,
+      discountValue: discountActive ? _discount : null,
+      depositType: depositActive ? AmountType.percent.apiValue : null,
+      depositValue: depositActive ? _depositPct : null,
+      taxName: taxActive ? (base?.taxName ?? 'Tax') : null,
+      taxRate: taxActive ? _taxPct : null,
+      total: _total,
+      showClientSignature: _clientSignature,
+      showMySignature: _mySignature,
+      notes: base?.notes,
+      privateNotes: base?.privateNotes,
+      status: base?.status,
+      isApproved: base?.isApproved,
+      isActive: true,
+      lineItems: lineItems,
+      sections: const [],
+    );
+
+    setState(() => _submitting = true);
+    final bloc = context.read<EstimateBloc>();
+    bloc.add(base != null
+        ? EstimateUpdateRequested(estimate)
+        : EstimateCreateRequested(estimate));
+  }
+
   Future<void> _pickPaymentTerms() async {
     const options = ['Due on receipt', 'Net 15', 'Net 30', 'Net 60'];
     final choice = await _showOptions('Payment terms', options, _paymentTerms);
@@ -742,14 +965,7 @@ class _DocumentFormState extends State<DocumentForm> {
                 ),
               ),
               ElevatedButton(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text(
-                            'Sending ${_docWord}s will be wired to the API.')),
-                  );
-                  context.pop();
-                },
+                onPressed: _submitting ? null : _submit,
                 style: ElevatedButton.styleFrom(
                   minimumSize: Size.zero,
                   padding: const EdgeInsets.symmetric(
@@ -758,10 +974,10 @@ class _DocumentFormState extends State<DocumentForm> {
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Text('Preview and send'),
-                    SizedBox(width: 7),
-                    Icon(Icons.arrow_forward, size: 15),
+                  children: [
+                    Text(_isEdit ? 'Save changes' : 'Preview and send'),
+                    const SizedBox(width: 7),
+                    const Icon(Icons.arrow_forward, size: 15),
                   ],
                 ),
               ),
@@ -1124,6 +1340,125 @@ class _InnerValueRow extends StatelessWidget {
             const SizedBox(width: 4),
             const Icon(Icons.chevron_right,
                 size: 15, color: AppColors.inkFaint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet that loads the pro's clients and returns the picked one.
+class _ClientPickerSheet extends StatefulWidget {
+  final int proId;
+  const _ClientPickerSheet({required this.proId});
+
+  @override
+  State<_ClientPickerSheet> createState() => _ClientPickerSheetState();
+}
+
+class _ClientPickerSheetState extends State<_ClientPickerSheet> {
+  late Future<List<Client>> _future;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<Client>> _load() async {
+    final result =
+        await Injection.clientRepository.fetchClients(widget.proId);
+    return result.fold((f) => throw f.message, (clients) => clients);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.grabber,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text('Select client',
+                style: AppTextStyles.headingSmall.copyWith(fontSize: 17)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: TextField(
+                autofocus: false,
+                onChanged: (v) => setState(() => _query = v.toLowerCase()),
+                decoration: InputDecoration(
+                  hintText: 'Search clients',
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: AppColors.line),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: FutureBuilder<List<Client>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          '${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.inkSoft),
+                        ),
+                      ),
+                    );
+                  }
+                  final clients = (snapshot.data ?? [])
+                      .where((c) =>
+                          _query.isEmpty ||
+                          c.name.toLowerCase().contains(_query))
+                      .toList()
+                    ..sort((a, b) => a.name.compareTo(b.name));
+                  if (clients.isEmpty) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text('No clients found.',
+                            style: AppTextStyles.caption),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: clients.length,
+                    itemBuilder: (context, i) {
+                      final c = clients[i];
+                      return ListTile(
+                        title: Text(c.name, style: AppTextStyles.rowTitle),
+                        subtitle: c.place.isEmpty
+                            ? null
+                            : Text(c.place, style: AppTextStyles.caption),
+                        onTap: () => Navigator.of(context).pop(c),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),

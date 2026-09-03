@@ -86,8 +86,9 @@ Dart class: `AppTextStyles` in `lib/core/theme/app_text_styles.dart`
   in `core/widgets/main_shell.dart`).
 - **Detail chrome:** compact green header with back label (`DetailHeader`),
   uppercase tool button row (`DocumentToolbar`), tinted `StatusBand`.
-- **Tabs:** rounded pill segments on a white bar (`PillTabs`); active fill is
-  green800 (red for Overdue, orange for new Leads).
+- **Tabs:** underline tab strip on a white bar (`PillTabs`) — equal-width
+  labels with a small count badge and an animated 2.5px underline indicator.
+  Active label + indicator are green800 (red for Overdue, orange for new Leads).
 - **Cards:** white, radius 14, 1px `line` border (`AppCard`, `CardRow`).
 - **Status chips:** tinted pills with 11px icon + 11/700 label (`StatusChip`).
 - **FAB:** orange extended pill, radius 14, soft orange shadow (`AppFab`).

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -12,6 +12,8 @@ import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/pill_tabs.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../core/widgets/tip_banner.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../bloc/estimate_bloc.dart';
 import '../models/estimate_model.dart';
 
 class EstimateListScreen extends StatefulWidget {
@@ -22,12 +24,10 @@ class EstimateListScreen extends StatefulWidget {
 }
 
 class _EstimateListScreenState extends State<EstimateListScreen> {
-  // Real estimates API isn't wired up yet — show sample data only in
-  // mock mode; a real logged-in user starts with none (first-run state).
-  final List<Estimate> _estimates =
-      AppConfig.useMockData ? mockEstimates : const [];
   int _tabIndex = 0;
   String _search = '';
+  bool _hasFetched = false;
+  late final GoRouter _goRouter;
 
   static const _tabOrder = [
     EstimateTab.pending,
@@ -35,78 +35,187 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
     EstimateTab.declined,
   ];
 
-  List<Estimate> get _filtered {
+  @override
+  void initState() {
+    super.initState();
+    _goRouter = GoRouter.of(context);
+    _goRouter.routeInformationProvider.addListener(_onRouteChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchOnce());
+  }
+
+  @override
+  void dispose() {
+    _goRouter.routeInformationProvider.removeListener(_onRouteChanged);
+    super.dispose();
+  }
+
+  void _onRouteChanged() {
+    final path = _goRouter.routeInformationProvider.value.uri.path;
+    if (path == AppRoutes.estimates) _refresh();
+  }
+
+  void _fetchOnce() {
+    if (_hasFetched) return;
+    final proId = _proId;
+    if (proId == null) return;
+    _hasFetched = true;
+    context.read<EstimateBloc>().add(EstimatesFetchRequested(proId));
+  }
+
+  void _refresh() {
+    final proId = _proId;
+    if (proId == null) return;
+    context.read<EstimateBloc>().add(EstimatesFetchRequested(proId));
+  }
+
+  Future<void> _handleRefresh() async {
+    _refresh();
+    try {
+      await context
+          .read<EstimateBloc>()
+          .stream
+          .firstWhere((s) => s is EstimatesLoaded || s is EstimatesError)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {}
+  }
+
+  int? get _proId {
+    final authState = context.read<AuthBloc>().state;
+    return authState is AuthAuthenticated ? authState.user.proId : null;
+  }
+
+  List<EstimateSummary> _filtered(List<EstimateSummary> all) {
     final q = _search.trim().toLowerCase();
-    return _estimates
+    return all
         .where((e) =>
             e.tab == _tabOrder[_tabIndex] &&
             (q.isEmpty ||
                 e.clientName.toLowerCase().contains(q) ||
                 e.number.toString().contains(q) ||
-                (e.amount?.toString().contains(q) ?? false)))
+                (e.amount?.toStringAsFixed(0).contains(q) ?? false)))
         .toList();
   }
 
-  int _count(EstimateTab tab) => _estimates.where((e) => e.tab == tab).length;
+  int _count(List<EstimateSummary> all, EstimateTab tab) =>
+      all.where((e) => e.tab == tab).length;
 
   @override
   Widget build(BuildContext context) {
-    if (_estimates.isEmpty) return const _EstimatesWelcomeView();
-
-    final pending = _estimates
-        .where((e) => e.tab == EstimateTab.pending && e.amount != null)
-        .toList();
-    final pendingTotal =
-        pending.fold<double>(0, (sum, e) => sum + (e.amount ?? 0));
-
-    return Scaffold(
-      body: Column(
-        children: [
-          AppHeader(
-            title: 'Estimates',
-            subtitle: '${pending.length} pending · ',
-            subtitleSpans: [
-              TextSpan(
-                text: Formatters.currencyShort(pendingTotal),
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700),
-              ),
-              const TextSpan(text: ' awaiting approval'),
-            ],
-            actions: [const NotificationBellButton()],
-            bottom: HeaderSearchBar(
-              hint: 'Search client, number, or amount',
-              onChanged: (v) => setState(() => _search = v),
-            ),
-          ),
-          PillTabs(
-            tabs: [
-              PillTab('Pending', count: _count(EstimateTab.pending)),
-              PillTab('Approved', count: _count(EstimateTab.approved)),
-              PillTab('Declined', count: _count(EstimateTab.declined)),
-            ],
-            selectedIndex: _tabIndex,
-            onChanged: (i) => setState(() => _tabIndex = i),
-          ),
-          Expanded(child: _list()),
-        ],
-      ),
-      floatingActionButton: AppFab(
-        label: 'New estimate',
-        onPressed: () => context.push(AppRoutes.newEstimate),
-      ),
+    return BlocListener<AuthBloc, AuthState>(
+      listenWhen: (_, curr) => curr is AuthAuthenticated,
+      listener: (context, _) => _fetchOnce(),
+      child: _buildContent(),
     );
   }
 
-  Widget _list() {
-    final rows = _filtered;
+  Widget _buildContent() {
+    return BlocConsumer<EstimateBloc, EstimatesState>(
+      listenWhen: (_, curr) => curr is EstimateMutateFailure,
+      listener: (context, state) {
+        if (state is EstimateMutateFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.orangeDeep,
+            ),
+          );
+        }
+      },
+      builder: (context, state) {
+        final estimates = switch (state) {
+          EstimatesLoaded(:final estimates) => estimates,
+          EstimateMutating(:final estimates) => estimates,
+          EstimateMutateSuccess(:final estimates) => estimates,
+          EstimateMutateFailure(:final estimates) => estimates,
+          _ => const <EstimateSummary>[],
+        };
+        final isLoading =
+            state is EstimatesLoading || state is EstimatesInitial;
+        final errorMessage = state is EstimatesError ? state.message : null;
+
+        if (!isLoading &&
+            errorMessage == null &&
+            estimates.isEmpty &&
+            _search.trim().isEmpty) {
+          return const _EstimatesWelcomeView();
+        }
+
+        final pending = estimates
+            .where((e) => e.tab == EstimateTab.pending && e.amount != null)
+            .toList();
+        final pendingTotal =
+            pending.fold<double>(0, (sum, e) => sum + (e.amount ?? 0));
+
+        return Scaffold(
+          body: Column(
+            children: [
+              AppHeader(
+                title: 'Estimates',
+                subtitle: '${pending.length} pending · ',
+                subtitleSpans: [
+                  TextSpan(
+                    text: Formatters.currencyShort(pendingTotal),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                  const TextSpan(text: ' awaiting approval'),
+                ],
+                actions: [const NotificationBellButton()],
+                bottom: HeaderSearchBar(
+                  hint: 'Search client, number, or amount',
+                  onChanged: (v) => setState(() => _search = v),
+                ),
+              ),
+              PillTabs(
+                tabs: [
+                  PillTab('Pending',
+                      count: _count(estimates, EstimateTab.pending)),
+                  PillTab('Approved',
+                      count: _count(estimates, EstimateTab.approved)),
+                  PillTab('Declined',
+                      count: _count(estimates, EstimateTab.declined)),
+                ],
+                selectedIndex: _tabIndex,
+                onChanged: (i) => setState(() => _tabIndex = i),
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: _handleRefresh,
+                  color: AppColors.orange500,
+                  child: isLoading && estimates.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : errorMessage != null && estimates.isEmpty
+                          ? _ErrorState(
+                              message: errorMessage, onRetry: _refresh)
+                          : _list(estimates),
+                ),
+              ),
+            ],
+          ),
+          floatingActionButton: AppFab(
+            label: 'New estimate',
+            onPressed: () => context.push(AppRoutes.newEstimate),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _list(List<EstimateSummary> all) {
+    final rows = _filtered(all);
     if (rows.isEmpty) {
       final searching = _search.trim().isNotEmpty;
-      return EmptyState(
-        title: searching ? 'No matches' : 'Nothing here yet',
-        description: searching
-            ? 'Try a different name or number.'
-            : 'Estimates you ${_tabIndex == 0 ? 'send' : 'move here'} will show up in this tab.',
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          const SizedBox(height: 80),
+          EmptyState(
+            title: searching ? 'No matches' : 'Nothing here yet',
+            description: searching
+                ? 'Try a different name or number.'
+                : 'Estimates you ${_tabIndex == 0 ? 'send' : 'move here'} will show up in this tab.',
+          ),
+        ],
       );
     }
 
@@ -125,8 +234,47 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
     }
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 96),
       children: children,
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        const SizedBox(height: 80),
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.cloud_off_outlined,
+                    size: 48, color: AppColors.inkFaint),
+                const SizedBox(height: 16),
+                Text(
+                  message,
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(color: AppColors.inkSoft),
+                ),
+                const SizedBox(height: 20),
+                TextButton(onPressed: onRetry, child: const Text('Try again')),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -143,7 +291,7 @@ class _MonthHeader extends StatelessWidget {
 }
 
 class _EstimateRow extends StatelessWidget {
-  final Estimate estimate;
+  final EstimateSummary estimate;
   final VoidCallback onTap;
   const _EstimateRow({required this.estimate, required this.onTap});
 
@@ -189,7 +337,7 @@ class _EstimateRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 5),
                   StatusChip(
-                      status: estimate.status, label: estimate.statusNote),
+                      status: estimate.docStatus, label: estimate.statusNote),
                 ],
               ),
             ],

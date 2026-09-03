@@ -14,6 +14,8 @@ import '../../features/clients/screens/add_client_screen.dart';
 import '../../features/clients/screens/client_detail_screen.dart';
 import '../../features/clients/screens/client_list_screen.dart';
 import '../../core/di/injection.dart';
+import '../../features/estimates/cubit/estimate_detail_cubit.dart';
+import '../../features/estimates/models/estimate_model.dart';
 import '../../features/estimates/screens/estimate_detail_screen.dart';
 import '../../features/estimates/screens/estimate_list_screen.dart';
 import '../../features/estimates/screens/new_estimate_screen.dart';
@@ -165,12 +167,21 @@ class AppRouter {
                   routes: [
                     GoRoute(
                       path: 'new',
-                      builder: (_, __) => const NewEstimateScreen(),
+                      builder: (_, state) {
+                        final extra = state.extra as Map<String, dynamic>?;
+                        return NewEstimateScreen(
+                          estimateToEdit:
+                              extra?['estimateToEdit'] as Estimate?,
+                        );
+                      },
                     ),
                     GoRoute(
                       path: ':id',
-                      builder: (_, state) => EstimateDetailScreen(
-                          id: state.pathParameters['id']!),
+                      builder: (_, state) => BlocProvider<EstimateDetailCubit>(
+                        create: (_) => Injection.createEstimateDetailCubit(),
+                        child: EstimateDetailScreen(
+                            id: state.pathParameters['id']!),
+                      ),
                     ),
                   ],
                 ),

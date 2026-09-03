@@ -3,6 +3,9 @@ import '../../features/auth/repository/auth_repository.dart';
 import '../../features/clients/bloc/client_bloc.dart';
 import '../../features/clients/cubit/client_detail_cubit.dart';
 import '../../features/clients/repository/client_repository.dart';
+import '../../features/estimates/bloc/estimate_bloc.dart';
+import '../../features/estimates/cubit/estimate_detail_cubit.dart';
+import '../../features/estimates/repository/estimate_repository.dart';
 import '../../features/items/cubit/items_cubit.dart';
 import '../../features/items/cubit/markups_cubit.dart';
 import '../../features/items/repository/markup_repository.dart';
@@ -36,6 +39,7 @@ class Injection {
   static late ApiClient _apiClient;
   static late AuthRepository _authRepository;
   static late ClientRepository _clientRepository;
+  static late EstimateRepository _estimateRepository;
   static late LeadRepository _leadRepository;
   static late ItemRepository _itemRepository;
   static late MarkupRepository _markupRepository;
@@ -54,6 +58,7 @@ class Injection {
       storage: _secureStorage,
     );
     _clientRepository = ClientRepositoryImpl(apiClient: _apiClient);
+    _estimateRepository = EstimateRepositoryImpl(apiClient: _apiClient);
     _leadRepository = LeadRepositoryImpl(apiClient: _apiClient);
     _itemRepository = ItemRepositoryImpl(apiClient: _apiClient);
     _markupRepository = MarkupRepositoryImpl(apiClient: _apiClient);
@@ -69,6 +74,7 @@ class Injection {
   static ApiClient get apiClient => _apiClient;
   static AuthRepository get authRepository => _authRepository;
   static ClientRepository get clientRepository => _clientRepository;
+  static EstimateRepository get estimateRepository => _estimateRepository;
   static LeadRepository get leadRepository => _leadRepository;
 
   static AuthBloc createAuthBloc() =>
@@ -79,6 +85,12 @@ class Injection {
 
   static ClientDetailCubit createClientDetailCubit() =>
       ClientDetailCubit(repository: _clientRepository);
+
+  static EstimateBloc createEstimateBloc() =>
+      EstimateBloc(repository: _estimateRepository);
+
+  static EstimateDetailCubit createEstimateDetailCubit() =>
+      EstimateDetailCubit(repository: _estimateRepository);
 
   static LeadBloc createLeadBloc() =>
       LeadBloc(repository: _leadRepository);
