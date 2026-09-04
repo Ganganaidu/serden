@@ -1,4 +1,5 @@
 import 'package:dartz/dartz.dart';
+import 'package:dio/dio.dart';
 
 import '../../../core/config/app_config.dart';
 import '../../../core/constants/app_constants.dart';
@@ -30,6 +31,12 @@ abstract class EstimateRepository {
   Future<Either<Failure, void>> deleteEstimate(int estimateId);
 
   Future<Either<Failure, void>> sendEstimate(int estimateId);
+
+  /// Uploads a photo to the estimate's Photos and Attachments section.
+  Future<Either<Failure, void>> uploadPhoto(String estimatePublicId, String filePath);
+
+  /// Uploads a document (pdf/doc/xls/csv/etc.) to the estimate.
+  Future<Either<Failure, void>> uploadFile(String estimatePublicId, String filePath);
 }
 
 class EstimateRepositoryImpl implements EstimateRepository {
@@ -239,6 +246,52 @@ class EstimateRepositoryImpl implements EstimateRepository {
       return Left(NetworkFailure(e.message));
     } catch (e) {
       AppLogger.error('sendEstimate: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> uploadPhoto(
+      String estimatePublicId, String filePath) async {
+    AppLogger.api('uploadPhoto: estimatePublicId=$estimatePublicId');
+    try {
+      final formData =
+          FormData.fromMap({'file': await MultipartFile.fromFile(filePath)});
+      // Note: this sub-resource is documented lowercase ("/estimates/…"),
+      // unlike the rest of the Estimates endpoints ("/Estimates/…").
+      await _apiClient.post('/estimates/$estimatePublicId/photos', data: formData);
+      AppLogger.api('uploadPhoto: success estimatePublicId=$estimatePublicId');
+      return const Right(null);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('uploadPhoto: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> uploadFile(
+      String estimatePublicId, String filePath) async {
+    AppLogger.api('uploadFile: estimatePublicId=$estimatePublicId');
+    try {
+      final formData =
+          FormData.fromMap({'file': await MultipartFile.fromFile(filePath)});
+      await _apiClient.post('/estimates/$estimatePublicId/files', data: formData);
+      AppLogger.api('uploadFile: success estimatePublicId=$estimatePublicId');
+      return const Right(null);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('uploadFile: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }

@@ -19,9 +19,11 @@ class EstimateDetailLoading extends EstimateDetailState {
 
 class EstimateDetailLoaded extends EstimateDetailState {
   final Estimate estimate;
-  const EstimateDetailLoaded(this.estimate);
+  final CompanyProfile? company;
+  final Client? client;
+  const EstimateDetailLoaded(this.estimate, {this.company, this.client});
   @override
-  List<Object?> get props => [estimate];
+  List<Object?> get props => [estimate, company, client];
 }
 
 class EstimateDetailError extends EstimateDetailState {

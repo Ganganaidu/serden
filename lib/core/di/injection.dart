@@ -76,6 +76,9 @@ class Injection {
   static ClientRepository get clientRepository => _clientRepository;
   static EstimateRepository get estimateRepository => _estimateRepository;
   static LeadRepository get leadRepository => _leadRepository;
+  static ItemRepository get itemRepository => _itemRepository;
+  static MarkupRepository get markupRepository => _markupRepository;
+  static TaxRepository get taxRepository => _taxRepository;
 
   static AuthBloc createAuthBloc() =>
       AuthBloc(repository: _authRepository)..add(const AuthCheckRequested());
@@ -90,7 +93,11 @@ class Injection {
       EstimateBloc(repository: _estimateRepository);
 
   static EstimateDetailCubit createEstimateDetailCubit() =>
-      EstimateDetailCubit(repository: _estimateRepository);
+      EstimateDetailCubit(
+        repository: _estimateRepository,
+        companyRepository: _companyProfileRepository,
+        clientRepository: _clientRepository,
+      );
 
   static LeadBloc createLeadBloc() =>
       LeadBloc(repository: _leadRepository);

@@ -1,9 +1,52 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/status_badge.dart';
 
 enum EstimateTab { pending, approved, declined }
+
+/// A photo attached to an estimate (`caption` set) or to one of its line
+/// items (`caption` null). Used for both `EstimatePhotoViewModel` and
+/// `EstimateLineItemPhotoViewModel`.
+class EstimatePhoto extends Equatable {
+  final int photoId;
+  final String? fileName;
+  final String? fileUrl;
+  final String? caption;
+  final int sortOrder;
+
+  const EstimatePhoto({
+    this.photoId = 0,
+    this.fileName,
+    this.fileUrl,
+    this.caption,
+    this.sortOrder = 0,
+  });
+
+  /// Full URL to render — the API's `fileUrl` when absolute, otherwise built
+  /// from the bare filename against the uploads origin.
+  String? get url {
+    final u = fileUrl?.trim();
+    if (u != null && u.isNotEmpty) {
+      return u.startsWith('http') ? u : AppConstants.projectPhotoUrl(u);
+    }
+    final f = fileName?.trim();
+    if (f != null && f.isNotEmpty) return AppConstants.projectPhotoUrl(f);
+    return null;
+  }
+
+  factory EstimatePhoto.fromJson(Map<String, dynamic> json) => EstimatePhoto(
+        photoId: json['photoId'] as int? ?? 0,
+        fileName: json['fileName'] as String?,
+        fileUrl: json['fileUrl'] as String?,
+        caption: json['caption'] as String?,
+        sortOrder: json['sortOrder'] as int? ?? 0,
+      );
+
+  @override
+  List<Object?> get props => [photoId, fileName, fileUrl, caption, sortOrder];
+}
 
 /// Percentage ('P') or fixed-amount ('F') modifier — used by the API for
 /// markup / discount / deposit values. Matches the `apiType` used by items.
@@ -78,6 +121,7 @@ class EstimateLineItem extends Equatable {
   final double total;
   final int sortOrder;
   final bool isActive;
+  final List<EstimatePhoto> photos;
 
   const EstimateLineItem({
     this.lineItemId = 0,
@@ -96,6 +140,7 @@ class EstimateLineItem extends Equatable {
     this.total = 0,
     this.sortOrder = 0,
     this.isActive = true,
+    this.photos = const [],
   });
 
   double get lineTotal => total != 0 ? total : unitPrice * quantity;
@@ -118,6 +163,10 @@ class EstimateLineItem extends Equatable {
         total: (json['total'] as num?)?.toDouble() ?? 0,
         sortOrder: json['sortOrder'] as int? ?? 0,
         isActive: json['isActive'] as bool? ?? true,
+        photos: (json['photos'] as List<dynamic>?)
+                ?.map((e) => EstimatePhoto.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
       );
 
   Map<String, dynamic> toJson() => {
@@ -219,6 +268,13 @@ class Estimate extends Equatable {
   final double total;
   final bool showClientSignature;
   final bool showMySignature;
+
+  /// Client-facing display toggles from the API — whether the estimate PDF
+  /// shows per-line rate, quantity, item totals, and section totals.
+  final bool showRate;
+  final bool showQuantity;
+  final bool showItemTotals;
+  final bool showSectionTotals;
   final String? notes;
   final String? privateNotes;
   final String? status;
@@ -232,7 +288,7 @@ class Estimate extends Equatable {
   final DateTime? modifiedDate;
   final List<EstimateSection> sections;
   final List<EstimateLineItem> lineItems;
-  final int photoCount;
+  final List<EstimatePhoto> photos;
   final int attachmentCount;
   final String? proName;
   final String? proEmail;
@@ -264,6 +320,10 @@ class Estimate extends Equatable {
     this.total = 0,
     this.showClientSignature = true,
     this.showMySignature = false,
+    this.showRate = true,
+    this.showQuantity = true,
+    this.showItemTotals = true,
+    this.showSectionTotals = true,
     this.notes,
     this.privateNotes,
     this.status,
@@ -277,7 +337,7 @@ class Estimate extends Equatable {
     this.modifiedDate,
     this.sections = const [],
     this.lineItems = const [],
-    this.photoCount = 0,
+    this.photos = const [],
     this.attachmentCount = 0,
     this.proName,
     this.proEmail,
@@ -334,6 +394,11 @@ class Estimate extends Equatable {
         total: (json['total'] as num?)?.toDouble() ?? 0,
         showClientSignature: json['showClientSignature'] as bool? ?? true,
         showMySignature: json['showMySignature'] as bool? ?? false,
+        showRate: json['showDisplayOptionsRate'] as bool? ?? true,
+        showQuantity: json['showDisplayOptionsQuantity'] as bool? ?? true,
+        showItemTotals: json['showDisplayOptionsItemTotals'] as bool? ?? true,
+        showSectionTotals:
+            json['showDisplayOptionsSectionTotals'] as bool? ?? true,
         notes: json['notes'] as String?,
         privateNotes: json['privateNotes'] as String?,
         status: json['status'] as String?,
@@ -354,7 +419,10 @@ class Estimate extends Equatable {
                     (e) => EstimateLineItem.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             const [],
-        photoCount: (json['photos'] as List<dynamic>?)?.length ?? 0,
+        photos: (json['photos'] as List<dynamic>?)
+                ?.map((e) => EstimatePhoto.fromJson(e as Map<String, dynamic>))
+                .toList() ??
+            const [],
         attachmentCount: (json['attachments'] as List<dynamic>?)?.length ?? 0,
         proName: json['proName'] as String?,
         proEmail: json['proEmail'] as String?,
@@ -392,6 +460,7 @@ class Estimate extends Equatable {
         if (notes != null) 'notes': notes,
         if (privateNotes != null) 'privateNotes': privateNotes,
         if (status != null) 'status': status,
+        if (isApproved != null) 'isApproved': isApproved,
         'isActive': isActive,
         'sections': sections.map((e) => e.toJson()).toList(),
         'lineItems': lineItems.map((e) => e.toJson()).toList(),
@@ -426,6 +495,10 @@ class Estimate extends Equatable {
         total: total,
         showClientSignature: showClientSignature,
         showMySignature: showMySignature,
+        showRate: showRate,
+        showQuantity: showQuantity,
+        showItemTotals: showItemTotals,
+        showSectionTotals: showSectionTotals,
         notes: notes,
         privateNotes: privateNotes,
         status: status ?? this.status,
@@ -439,7 +512,7 @@ class Estimate extends Equatable {
         modifiedDate: modifiedDate,
         sections: sections,
         lineItems: lineItems,
-        photoCount: photoCount,
+        photos: photos,
         attachmentCount: attachmentCount,
         proName: proName,
         proEmail: proEmail,

@@ -119,16 +119,49 @@ class DocWatermark extends StatelessWidget {
   }
 }
 
-/// Company logo block: navy S mark + wordmark.
+/// Company logo block. Shows the pro's uploaded logo when [logoUrl] is set;
+/// otherwise a lettermark box + company name (falls back to the Serden
+/// wordmark when no [companyName] is given, for the not-yet-wired invoice
+/// preview).
 class DocLogoBlock extends StatelessWidget {
   final bool mobile;
-  const DocLogoBlock({super.key, required this.mobile});
+  final String? logoUrl;
+  final String? companyName;
+
+  const DocLogoBlock({
+    super.key,
+    required this.mobile,
+    this.logoUrl,
+    this.companyName,
+  });
 
   @override
   Widget build(BuildContext context) {
     final markSize = mobile ? 52.0 : 66.0;
+
+    if (logoUrl != null && logoUrl!.isNotEmpty) {
+      return ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: markSize + 20,
+          maxWidth: mobile ? 200 : 240,
+        ),
+        child: Image.network(
+          logoUrl!,
+          alignment: Alignment.centerLeft,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => _lettermark(markSize),
+        ),
+      );
+    }
+    return _lettermark(markSize);
+  }
+
+  Widget _lettermark(double markSize) {
+    final name = (companyName ?? '').trim();
+    final letter = name.isNotEmpty ? name[0].toUpperCase() : 'S';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           width: markSize,
@@ -136,7 +169,7 @@ class DocLogoBlock extends StatelessWidget {
           alignment: Alignment.center,
           color: AppColors.docNavy,
           child: Text(
-            'S',
+            letter,
             style: docStyle(
               size: markSize * 0.62,
               weight: FontWeight.w700,
@@ -145,28 +178,43 @@ class DocLogoBlock extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 5),
-        Text(
-          'SERDEN',
-          style: docStyle(
-            size: 19,
-            weight: FontWeight.w700,
-            color: AppColors.docNavy,
-            letterSpacing: 0.8,
-            height: 1,
+        const SizedBox(height: 6),
+        if (name.isEmpty) ...[
+          Text(
+            'SERDEN',
+            style: docStyle(
+              size: 19,
+              weight: FontWeight.w700,
+              color: AppColors.docNavy,
+              letterSpacing: 0.8,
+              height: 1,
+            ),
           ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          'GROUP',
-          style: docStyle(
-            size: 9.5,
-            weight: FontWeight.w700,
-            color: AppColors.docNavy,
-            letterSpacing: 4,
-            height: 1,
+          const SizedBox(height: 3),
+          Text(
+            'GROUP',
+            style: docStyle(
+              size: 9.5,
+              weight: FontWeight.w700,
+              color: AppColors.docNavy,
+              letterSpacing: 4,
+              height: 1,
+            ),
           ),
-        ),
+        ] else
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: mobile ? 200 : 240),
+            child: Text(
+              name,
+              style: docStyle(
+                size: mobile ? 16 : 15,
+                weight: FontWeight.w700,
+                color: AppColors.docNavy,
+                letterSpacing: 0.4,
+                height: 1.2,
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -213,7 +261,15 @@ class DocPreparedBlock extends StatelessWidget {
 
 class DocCompanyBlock extends StatelessWidget {
   final bool mobile;
-  const DocCompanyBlock({super.key, required this.mobile});
+  final String? name;
+  final String? details;
+
+  const DocCompanyBlock({
+    super.key,
+    required this.mobile,
+    this.name,
+    this.details,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -221,7 +277,7 @@ class DocCompanyBlock extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Serden Group LLC',
+          (name ?? '').trim().isNotEmpty ? name!.trim() : 'Serden Group LLC',
           style: docStyle(
             size: mobile ? 15.5 : 13.5,
             weight: FontWeight.w700,
@@ -231,10 +287,12 @@ class DocCompanyBlock extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          '1104 Main St, Ste 610\n'
-          'Vancouver, WA 98660\n'
-          'Phone: (360) 836-7775\n'
-          'Email: serdengroup@gmail.com',
+          (details ?? '').trim().isNotEmpty
+              ? details!.trim()
+              : '1104 Main St, Ste 610\n'
+                  'Vancouver, WA 98660\n'
+                  'Phone: (360) 836-7775\n'
+                  'Email: serdengroup@gmail.com',
           style: docStyle(size: mobile ? 15 : 13.5, height: 1.7),
         ),
       ],

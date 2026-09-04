@@ -1,6 +1,11 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../core/di/injection.dart';
 import '../../core/theme/app_colors.dart';
@@ -13,6 +18,60 @@ import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/clients/models/client_model.dart';
 import '../../features/estimates/bloc/estimate_bloc.dart';
 import '../../features/estimates/models/estimate_model.dart';
+import '../../features/items/models/item_model.dart';
+import '../../features/items/models/markup_template.dart';
+import '../../features/taxes/models/tax_model.dart';
+
+/// Sentinel id returned by the tax/markup picker sheets' "Custom amount"
+/// row — picking it just reveals the manually-editable totals row instead
+/// of applying a saved preset.
+const int kCustomPickId = -1;
+
+/// File types accepted by the "Files" attachment picker, and the per-file
+/// size cap — mirrors what the API accepts for estimate/invoice attachments.
+const List<String> kAttachmentExtensions = [
+  'pdf',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+  'jpg',
+  'jpeg',
+  'png',
+  'gif',
+  'cad',
+  'csv',
+];
+const int kMaxAttachmentBytes = 25 * 1024 * 1024;
+
+String formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
+IconData iconForFileExtension(String? extension) {
+  switch (extension?.toLowerCase()) {
+    case 'pdf':
+      return Icons.picture_as_pdf_outlined;
+    case 'doc':
+    case 'docx':
+      return Icons.description_outlined;
+    case 'xls':
+    case 'xlsx':
+    case 'csv':
+      return Icons.table_chart_outlined;
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'gif':
+      return Icons.image_outlined;
+    case 'cad':
+      return Icons.architecture_outlined;
+    default:
+      return Icons.insert_drive_file_outlined;
+  }
+}
 
 /// Editable line item on the new estimate / invoice form.
 class LineItemDraft {
@@ -23,11 +82,21 @@ class LineItemDraft {
   /// Id of the existing API line item, when editing. 0 for new rows.
   int existingId;
 
+  /// Id of the catalog item this row was populated from, if any.
+  int? catalogItemId;
+
+  /// Bumped whenever this row is populated programmatically (e.g. from the
+  /// catalog picker) so the name/price fields rebuild with the new value —
+  /// otherwise their [TextFormField]s ignore `initialValue` after first
+  /// build and keep whatever the user last typed.
+  int rev = 0;
+
   LineItemDraft({
     this.name = '',
     this.qty = 1,
     this.price = 0,
     this.existingId = 0,
+    this.catalogItemId,
   });
 
   double get total => qty * price;
@@ -62,14 +131,36 @@ class _DocumentFormState extends State<DocumentForm> {
   Client? _selectedClient;
   bool _submitting = false;
 
+  // Staged locally; uploaded to the API after the estimate is created/
+  // updated (it has no id to upload against beforehand).
+  final List<XFile> _photos = [];
+  final List<PlatformFile> _files = [];
+  final _imagePicker = ImagePicker();
+
   bool get _isEdit => widget.estimateToEdit != null;
 
   // Optional adjustment rows (visible after tapping a chip).
   final Set<String> _activeAdjustments = {};
   double _discount = 0;
+  AmountType _discountType = AmountType.fixed;
   double _markup = 0;
   double _taxPct = 0;
-  double _depositPct = 25;
+  double _depositValue = 25;
+  AmountType _depositType = AmountType.percent;
+
+  // Tax / markup picker selections. Tax always replaces; re-picking the same
+  // markup template stacks (increments) its value instead of replacing.
+  int? _taxId;
+  String? _taxName;
+  int? _markupTemplateId;
+  String? _markupName;
+  MarkupType _markupType = MarkupType.flat;
+
+  // Bumped on each pick so the totals-row TextFormField (which only reads
+  // `initialValue` on first build) rebuilds with the new value — see the
+  // same gotcha/fix noted on LineItemDraft.rev.
+  int _taxRev = 0;
+  int _markupRev = 0;
 
   bool _groupSections = false;
   bool _paypalEnabled = true;
@@ -81,6 +172,9 @@ class _DocumentFormState extends State<DocumentForm> {
   bool _allowExpire = false;
   int _validDays = 30;
   String _paymentTerms = 'Due on receipt';
+
+  String? _notes;
+  String? _privateNotes;
 
   @override
   void initState() {
@@ -107,28 +201,35 @@ class _DocumentFormState extends State<DocumentForm> {
               qty: li.quantity,
               price: li.unitPrice,
               existingId: li.lineItemId,
+              catalogItemId: li.catalogLineItemId,
             )));
     }
 
     _groupSections = e.groupItemsIntoSections;
     _clientSignature = e.showClientSignature;
     _mySignature = e.showMySignature;
+    _notes = e.notes;
+    _privateNotes = e.privateNotes;
 
     if ((e.discountValue ?? 0) > 0) {
       _activeAdjustments.add('discount');
       _discount = e.discountValue!;
+      _discountType = AmountType.fromApi(e.discountType);
     }
     if ((e.markupValue ?? 0) > 0) {
       _activeAdjustments.add('markup');
       _markup = e.markupValue!;
+      _markupType = e.markupType == 'F' ? MarkupType.flat : MarkupType.percent;
     }
     if ((e.taxRate ?? 0) > 0) {
       _activeAdjustments.add('tax');
       _taxPct = e.taxRate!;
+      _taxName = e.taxName;
     }
     if ((e.depositValue ?? 0) > 0) {
       _activeAdjustments.add('deposit');
-      _depositPct = e.depositValue!;
+      _depositValue = e.depositValue!;
+      _depositType = AmountType.fromApi(e.depositType);
     }
     if (e.expirationDate != null) {
       _allowExpire = true;
@@ -141,16 +242,25 @@ class _DocumentFormState extends State<DocumentForm> {
       _items.fold(0, (sum, item) => sum + item.total);
 
   double get _total {
-    final discount = _activeAdjustments.contains('discount') ? _discount : 0;
-    final markup = _activeAdjustments.contains('markup') ? _markup : 0;
-    final taxPct = _activeAdjustments.contains('tax') ? _taxPct : 0;
+    final discountRaw =
+        _activeAdjustments.contains('discount') ? _discount : 0.0;
+    final discount = _discountType == AmountType.percent
+        ? _subtotal * discountRaw / 100
+        : discountRaw;
+    final markupRaw = _activeAdjustments.contains('markup') ? _markup : 0.0;
+    final markup = _markupType == MarkupType.percent
+        ? _subtotal * markupRaw / 100
+        : markupRaw;
+    final taxPct = _activeAdjustments.contains('tax') ? _taxPct : 0.0;
     final base = (_subtotal - discount + markup).clamp(0, double.infinity);
     return base * (1 + taxPct / 100);
   }
 
   String get _footerLabel {
-    if (_activeAdjustments.contains('deposit') && _depositPct > 0) {
-      final deposit = _total * _depositPct / 100;
+    if (_activeAdjustments.contains('deposit') && _depositValue > 0) {
+      final deposit = _depositType == AmountType.percent
+          ? _total * _depositValue / 100
+          : _depositValue;
       return 'Total (USD) · ${Formatters.currency(deposit)} deposit due';
     }
     return 'Total (USD)';
@@ -165,11 +275,29 @@ class _DocumentFormState extends State<DocumentForm> {
   Widget build(BuildContext context) {
     return BlocListener<EstimateBloc, EstimatesState>(
       listenWhen: (_, __) => _submitting,
-      listener: (context, state) {
+      listener: (context, state) async {
         if (state is EstimateMutateSuccess) {
+          final estimate = state.estimate;
+          var failedUploads = 0;
+          if (estimate?.publicId != null &&
+              (_photos.isNotEmpty || _files.isNotEmpty)) {
+            failedUploads = await _uploadStagedAttachments(estimate!.publicId!);
+          }
+          if (!context.mounted) return;
           setState(() => _submitting = false);
-          if (state.estimate != null) {
-            context.pop({'estimate': state.estimate});
+          if (failedUploads > 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                    '$failedUploads attachment${failedUploads == 1 ? '' : 's'} '
+                    "failed to upload — you can retry from the estimate's Edit screen."),
+                backgroundColor: AppColors.orangeDeep,
+                duration: const Duration(seconds: 4),
+              ),
+            );
+          }
+          if (estimate != null) {
+            context.pop({'estimate': estimate});
           } else {
             context.pop();
           }
@@ -288,6 +416,7 @@ class _DocumentFormState extends State<DocumentForm> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TextFormField(
+                  key: ValueKey('name-$index-${item.rev}'),
                   initialValue: item.name,
                   onChanged: (v) => item.name = v,
                   style: AppTextStyles.rowTitle.copyWith(fontSize: 14.5),
@@ -301,7 +430,9 @@ class _DocumentFormState extends State<DocumentForm> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                Row(
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  runSpacing: 6,
                   children: [
                     _numField(
                       initial: item.qty.toString(),
@@ -313,9 +444,18 @@ class _DocumentFormState extends State<DocumentForm> {
                       child: Text('×', style: AppTextStyles.caption),
                     ),
                     _numField(
-                      initial: item.price == 0 ? '0' : item.price.toString(),
+                      key: ValueKey('price-$index-${item.rev}'),
+                      initial: item.price == 0 ? '' : item.price.toString(),
+                      hintText: '\$0.00',
+                      prefixText: '\$',
                       onChanged: (v) => setState(
                           () => item.price = double.tryParse(v)?.abs() ?? 0),
+                    ),
+                    const SizedBox(width: 8),
+                    _ChipButton(
+                      icon: Icons.list_alt_outlined,
+                      label: 'Item list',
+                      onTap: () => _pickCatalogItem(index),
                     ),
                   ],
                 ),
@@ -346,12 +486,16 @@ class _DocumentFormState extends State<DocumentForm> {
   }
 
   Widget _numField({
+    Key? key,
     required String initial,
     required ValueChanged<String> onChanged,
+    String? hintText,
+    String? prefixText,
   }) {
     return SizedBox(
-      width: 64,
+      width: prefixText != null ? 78 : 64,
       child: TextFormField(
+        key: key,
         initialValue: initial,
         onChanged: onChanged,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -360,6 +504,10 @@ class _DocumentFormState extends State<DocumentForm> {
           isDense: true,
           filled: true,
           fillColor: AppColors.page,
+          hintText: hintText,
+          prefixText: prefixText,
+          prefixStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.inkFaint),
+          hintStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.inkFaint),
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           enabledBorder: OutlineInputBorder(
@@ -382,12 +530,22 @@ class _DocumentFormState extends State<DocumentForm> {
     ('tax', 'Tax'),
     ('markup', 'Markup'),
     ('deposit', 'Request deposit'),
-    ('schedule', 'Payment schedule'),
   ];
 
+  // Discount, Tax, Markup, and Request deposit stay visible after being
+  // added — tapping them again reopens the picker to change (or, for
+  // Markup, stack) the selection. The rest hide once active.
+  static const _alwaysShownAdjustments = {
+    'discount',
+    'tax',
+    'markup',
+    'deposit',
+  };
+
   Widget _adjustChips() {
-    final available =
-        _adjustments.where((a) => !_activeAdjustments.contains(a.$1));
+    final available = _adjustments.where((a) =>
+        _alwaysShownAdjustments.contains(a.$1) ||
+        !_activeAdjustments.contains(a.$1));
     if (available.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
@@ -398,11 +556,125 @@ class _DocumentFormState extends State<DocumentForm> {
           for (final adj in available)
             _ChipButton(
               label: adj.$2,
-              onTap: () => setState(() => _activeAdjustments.add(adj.$1)),
+              active: _activeAdjustments.contains(adj.$1),
+              icon: _activeAdjustments.contains(adj.$1)
+                  ? Icons.check
+                  : Icons.add,
+              onTap: () => _handleAdjustmentTap(adj.$1),
             ),
         ],
       ),
     );
+  }
+
+  void _handleAdjustmentTap(String key) {
+    switch (key) {
+      case 'discount':
+        _pickDiscount();
+      case 'tax':
+        _pickTax();
+      case 'markup':
+        _pickMarkup();
+      case 'deposit':
+        _pickDeposit();
+      default:
+        setState(() => _activeAdjustments.add(key));
+    }
+  }
+
+  Future<void> _pickDiscount() async {
+    final result = await showModalBottomSheet<(AmountType, double)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _AmountPickerSheet(
+        title: 'Discount',
+        amountLabel: 'Discount Amount',
+        initialType: _discountType,
+        initialValue: _discount,
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      _discountType = result.$1;
+      _discount = result.$2;
+      _activeAdjustments.add('discount');
+    });
+  }
+
+  Future<void> _pickDeposit() async {
+    final result = await showModalBottomSheet<(AmountType, double)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _AmountPickerSheet(
+        title: 'Request Deposit',
+        amountLabel: 'Deposit Amount',
+        initialType: _depositType,
+        initialValue: _depositValue,
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      _depositType = result.$1;
+      _depositValue = result.$2;
+      _activeAdjustments.add('deposit');
+    });
+  }
+
+  Future<void> _pickTax() async {
+    final proId = _proId;
+    if (proId == null) return;
+    final picked = await showModalBottomSheet<TaxRate>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) =>
+          _TaxPickerSheet(proId: proId, selectedId: _taxId),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (picked.id == kCustomPickId) {
+        // "Custom amount" — detach from any preset, keep the current rate
+        // (or 0 on first activation) so the row is just manually editable.
+        _taxId = null;
+        _taxName = null;
+      } else {
+        _taxId = picked.id;
+        _taxName = picked.name;
+        _taxPct = picked.rate;
+      }
+      _taxRev++;
+      _activeAdjustments.add('tax');
+    });
+  }
+
+  Future<void> _pickMarkup() async {
+    final proId = _proId;
+    if (proId == null) return;
+    final picked = await showModalBottomSheet<MarkupTemplate>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) =>
+          _MarkupPickerSheet(proId: proId, selectedId: _markupTemplateId),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (picked.id == kCustomPickId) {
+        // "Custom amount" — detach from any template, keep the current
+        // type/value (or the flat/0 default on first activation).
+        _markupTemplateId = null;
+        _markupName = null;
+      } else {
+        // Re-picking the same template stacks it; picking a different one
+        // (or picking for the first time) replaces the current value.
+        _markup = _markupTemplateId == picked.id
+            ? _markup + picked.rate
+            : picked.rate;
+        _markupType = picked.type;
+        _markupName = picked.name;
+        _markupTemplateId = picked.id;
+      }
+      _markupRev++;
+      _activeAdjustments.add('markup');
+    });
   }
 
   Widget _totalsCard() {
@@ -416,55 +688,81 @@ class _DocumentFormState extends State<DocumentForm> {
             showDivider: _activeAdjustments.isNotEmpty,
           ),
           if (_activeAdjustments.contains('discount'))
-            _adjustInputRow(
+            _totalRow(
               'Discount',
-              key: 'discount',
-              prefix: '−\$',
-              initial: _discount,
-              onChanged: (v) => _discount = v,
+              showDivider: 'discount' != _activeAdjustments.last,
+              value: InkWell(
+                onTap: _pickDiscount,
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _discountType == AmountType.percent
+                            ? '−${_trimmed(_discount)}%'
+                            : '−${Formatters.currency(_discount)}',
+                        style: AppTextStyles.labelMedium
+                            .copyWith(fontSize: 13.5),
+                      ),
+                      _removeAdjustment('discount'),
+                    ],
+                  ),
+                ),
+              ),
             ),
           if (_activeAdjustments.contains('markup'))
             _adjustInputRow(
-              'Markup',
+              _markupName != null ? 'Markup — $_markupName' : 'Markup',
               key: 'markup',
-              prefix: '+\$',
+              fieldKey: ValueKey('markup-field-$_markupRev'),
+              prefix: _markupType == MarkupType.flat ? '+\$' : null,
+              suffix: _markupType == MarkupType.percent ? '%' : null,
               initial: _markup,
               onChanged: (v) => _markup = v,
             ),
           if (_activeAdjustments.contains('tax'))
             _adjustInputRow(
-              'Tax',
+              _taxName != null ? 'Tax ($_taxName)' : 'Tax',
               key: 'tax',
+              fieldKey: ValueKey('tax-field-$_taxRev'),
               suffix: '%',
               initial: _taxPct,
               onChanged: (v) => _taxPct = v,
             ),
           if (_activeAdjustments.contains('deposit'))
-            _adjustInputRow(
-              'Deposit due upfront',
-              key: 'deposit',
-              suffix: '%',
-              initial: _depositPct,
-              onChanged: (v) => _depositPct = v.clamp(0, 100),
-            ),
-          if (_activeAdjustments.contains('schedule'))
             _totalRow(
-              'Payment schedule',
-              value: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('50% start · 50% done',
-                      style:
-                          AppTextStyles.labelMedium.copyWith(fontSize: 13)),
-                  _removeAdjustment('schedule'),
-                ],
+              'Deposit due upfront',
+              showDivider: 'deposit' != _activeAdjustments.last,
+              value: InkWell(
+                onTap: _pickDeposit,
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _depositType == AmountType.percent
+                            ? '${_trimmed(_depositValue)}%'
+                            : Formatters.currency(_depositValue),
+                        style: AppTextStyles.labelMedium
+                            .copyWith(fontSize: 13.5),
+                      ),
+                      _removeAdjustment('deposit'),
+                    ],
+                  ),
+                ),
               ),
-              showDivider: false,
             ),
         ],
       ),
     );
   }
+
+  String _trimmed(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
   Widget _totalRow(String label,
       {required Widget value, bool showDivider = true}) {
@@ -494,6 +792,7 @@ class _DocumentFormState extends State<DocumentForm> {
     required ValueChanged<double> onChanged,
     String? prefix,
     String? suffix,
+    Key? fieldKey,
   }) {
     final isLast = key == _activeAdjustments.last;
     return _totalRow(
@@ -508,6 +807,7 @@ class _DocumentFormState extends State<DocumentForm> {
           SizedBox(
             width: 72,
             child: TextFormField(
+              key: fieldKey,
               initialValue:
                   initial == initial.roundToDouble() && initial != 0
                       ? initial.toInt().toString()
@@ -547,7 +847,25 @@ class _DocumentFormState extends State<DocumentForm> {
 
   Widget _removeAdjustment(String key) {
     return InkWell(
-      onTap: () => setState(() => _activeAdjustments.remove(key)),
+      onTap: () => setState(() {
+        _activeAdjustments.remove(key);
+        if (key == 'discount') {
+          _discountType = AmountType.fixed;
+          _discount = 0;
+        } else if (key == 'tax') {
+          _taxId = null;
+          _taxName = null;
+          _taxPct = 0;
+        } else if (key == 'markup') {
+          _markupTemplateId = null;
+          _markupName = null;
+          _markupType = MarkupType.flat;
+          _markup = 0;
+        } else if (key == 'deposit') {
+          _depositType = AmountType.percent;
+          _depositValue = 25;
+        }
+      }),
       borderRadius: BorderRadius.circular(6),
       child: const Padding(
         padding: EdgeInsets.all(4),
@@ -653,13 +971,21 @@ class _DocumentFormState extends State<DocumentForm> {
             icon: Icons.attachment,
             title: 'Photos and attachments',
             pill: const PlanPill.pro(),
-            subtitle: 'None added',
+            subtitle: _attachmentsSummary,
             open: _openBlocks.contains('attachments'),
             onToggle: _toggleBlock,
             body: Column(
               children: [
-                _InnerValueRow(label: 'Photos', value: '0', onTap: () {}),
-                _InnerValueRow(label: 'Files', value: '0', onTap: () {}),
+                _InnerValueRow(
+                  label: 'Photos',
+                  value: _photos.isEmpty ? 'Add' : '${_photos.length}',
+                  onTap: _openPhotosSheet,
+                ),
+                _InnerValueRow(
+                  label: 'Files',
+                  value: _files.isEmpty ? 'Add' : '${_files.length}',
+                  onTap: _openFilesSheet,
+                ),
               ],
             ),
           ),
@@ -695,18 +1021,21 @@ class _DocumentFormState extends State<DocumentForm> {
             id: 'notes',
             icon: Icons.chat_bubble_outline,
             title: 'Notes',
-            subtitle: 'None added',
+            subtitle: _notesSummary,
             open: _openBlocks.contains('notes'),
             onToggle: _toggleBlock,
             body: Column(
               children: [
-                _InnerValueRow(
-                    label: 'Notes for client', value: 'Add', onTap: () {}),
-                _InnerValueRow(
+                _NoteEntryRow(
+                  label: 'Notes for client',
+                  text: _notes,
+                  onTap: () => _pickNotes(isPrivate: false),
+                ),
+                _NoteEntryRow(
                   label: 'Private notes',
                   pill: const PlanPill.pro(),
-                  value: 'Add',
-                  onTap: () {},
+                  text: _privateNotes,
+                  onTap: () => _pickNotes(isPrivate: true),
                 ),
               ],
             ),
@@ -766,6 +1095,333 @@ class _DocumentFormState extends State<DocumentForm> {
     });
   }
 
+  // ---- Photos and attachments ------------------------------------------
+
+  String get _attachmentsSummary {
+    if (_photos.isEmpty && _files.isEmpty) return 'None added';
+    final parts = <String>[
+      if (_photos.isNotEmpty) '${_photos.length} photo${_photos.length == 1 ? '' : 's'}',
+      if (_files.isNotEmpty) '${_files.length} file${_files.length == 1 ? '' : 's'}',
+    ];
+    return parts.join(' · ');
+  }
+
+  Future<ImageSource?> _showPhotoSourceSheet() {
+    return showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 36),
+        decoration: const BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 38,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppColors.line,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined,
+                  color: AppColors.greenDeep),
+              title: Text('Take photo', style: AppTextStyles.rowTitle),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined,
+                  color: AppColors.greenDeep),
+              title: Text('Choose from library', style: AppTextStyles.rowTitle),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPhotosSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          Future<void> addPhoto() async {
+            final source = await _showPhotoSourceSheet();
+            if (source == null) return;
+            final file =
+                await _imagePicker.pickImage(source: source, imageQuality: 85);
+            if (file == null) return;
+            setSheetState(() => _photos.add(file));
+          }
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: AppColors.grabber,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text('Photos',
+                      style: AppTextStyles.headingSmall.copyWith(fontSize: 18)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Add jobsite photos so your client can see the work.',
+                    style: AppTextStyles.caption,
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (var i = 0; i < _photos.length; i++)
+                        _StagedPhotoThumb(
+                          file: _photos[i],
+                          onRemove: () =>
+                              setSheetState(() => _photos.removeAt(i)),
+                        ),
+                      _AddAttachmentTile(
+                        icon: Icons.add_a_photo_outlined,
+                        onTap: addPhoto,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<List<PlatformFile>> _pickFiles() async {
+    final result = await FilePicker.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: kAttachmentExtensions,
+    );
+    if (result == null) return const [];
+
+    final accepted = <PlatformFile>[];
+    final tooLarge = <String>[];
+    for (final f in result.files) {
+      if (f.size > kMaxAttachmentBytes) {
+        tooLarge.add(f.name);
+      } else {
+        accepted.add(f);
+      }
+    }
+    if (tooLarge.isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${tooLarge.join(', ')} '
+            '${tooLarge.length == 1 ? 'is' : 'are'} over the 25MB limit and '
+            '${tooLarge.length == 1 ? 'was' : 'were'} skipped.',
+          ),
+          backgroundColor: AppColors.orangeDeep,
+        ),
+      );
+    }
+    return accepted;
+  }
+
+  Future<void> _openFilesSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.75),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: AppColors.grabber,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Text('Files',
+                        style:
+                            AppTextStyles.headingSmall.copyWith(fontSize: 18)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'PDF, Word, Excel, CSV, CAD, or image files — up to 25MB each.',
+                      style: AppTextStyles.caption,
+                    ),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: _files.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Text('No files added yet.',
+                                  style: AppTextStyles.caption),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: _files.length,
+                              separatorBuilder: (_, __) =>
+                                  const Divider(height: 1, color: AppColors.line),
+                              itemBuilder: (context, i) {
+                                final f = _files[i];
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 10),
+                                  child: Row(
+                                    children: [
+                                      Icon(iconForFileExtension(f.extension),
+                                          size: 20, color: AppColors.inkSoft),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              f.name,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: AppTextStyles.rowTitle
+                                                  .copyWith(fontSize: 14),
+                                            ),
+                                            Text(formatFileSize(f.size),
+                                                style: AppTextStyles.caption),
+                                          ],
+                                        ),
+                                      ),
+                                      InkWell(
+                                        onTap: () => setSheetState(
+                                            () => _files.removeAt(i)),
+                                        borderRadius: BorderRadius.circular(6),
+                                        child: const Padding(
+                                          padding: EdgeInsets.all(4),
+                                          child: Icon(Icons.close,
+                                              size: 16,
+                                              color: AppColors.inkFaint),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final picked = await _pickFiles();
+                        if (picked.isNotEmpty) {
+                          setSheetState(() => _files.addAll(picked));
+                        }
+                      },
+                      icon: const Icon(Icons.attach_file, size: 17),
+                      label: const Text('Add file'),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(46),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// Best-effort: the estimate/invoice itself is already saved by the time
+  /// this runs, so a failed attachment upload doesn't block navigating away
+  /// — it's just logged and surfaced as a warning.
+  Future<int> _uploadStagedAttachments(String documentPublicId) async {
+    var failures = 0;
+    for (final photo in _photos) {
+      final result =
+          await Injection.estimateRepository.uploadPhoto(documentPublicId, photo.path);
+      result.fold((_) => failures++, (_) {});
+    }
+    for (final file in _files) {
+      final path = file.path;
+      if (path == null) {
+        failures++;
+        continue;
+      }
+      final result =
+          await Injection.estimateRepository.uploadFile(documentPublicId, path);
+      result.fold((_) => failures++, (_) {});
+    }
+    return failures;
+  }
+
+  // ---- Notes ------------------------------------------------------------
+
+  String get _notesSummary {
+    final hasNotes = (_notes ?? '').trim().isNotEmpty;
+    final hasPrivate = (_privateNotes ?? '').trim().isNotEmpty;
+    if (!hasNotes && !hasPrivate) return 'None added';
+    final parts = <String>[
+      if (hasNotes) 'Client note added',
+      if (hasPrivate) 'Private note added',
+    ];
+    return parts.join(' · ');
+  }
+
+  Future<void> _pickNotes({required bool isPrivate}) async {
+    final current = isPrivate ? _privateNotes : _notes;
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _NotesSheet(
+        title: isPrivate ? 'Private Notes' : 'Notes for Client',
+        hint: isPrivate
+            ? 'Only visible to you — reminders, job details, anything you don\'t want the client to see.'
+            : 'Shown on the document — payment instructions, scope clarifications, a thank-you note.',
+        initialText: current ?? '',
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      final trimmed = result.trim();
+      if (isPrivate) {
+        _privateNotes = trimmed.isEmpty ? null : trimmed;
+      } else {
+        _notes = trimmed.isEmpty ? null : trimmed;
+      }
+    });
+  }
+
   // ---- Client picker -------------------------------------------------
 
   int? get _proId {
@@ -782,6 +1438,26 @@ class _DocumentFormState extends State<DocumentForm> {
       builder: (sheetContext) => _ClientPickerSheet(proId: proId),
     );
     if (picked != null) setState(() => _selectedClient = picked);
+  }
+
+  // ---- Catalog item picker --------------------------------------------
+
+  Future<void> _pickCatalogItem(int index) async {
+    final proId = _proId;
+    if (proId == null) return;
+    final picked = await showModalBottomSheet<Item>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _ItemPickerSheet(proId: proId),
+    );
+    if (picked == null) return;
+    setState(() {
+      final draft = _items[index];
+      draft.name = picked.name;
+      if (picked.unitPrice != null) draft.price = picked.unitPrice!;
+      draft.catalogItemId = picked.itemId;
+      draft.rev++;
+    });
   }
 
   // ---- Submit -------------------------------------------------------
@@ -819,6 +1495,7 @@ class _DocumentFormState extends State<DocumentForm> {
       if (it.name.trim().isEmpty && it.price == 0) continue;
       lineItems.add(EstimateLineItem(
         lineItemId: it.existingId,
+        catalogLineItemId: it.catalogItemId,
         description: it.name.trim(),
         unitPrice: it.price,
         quantity: it.qty,
@@ -834,7 +1511,7 @@ class _DocumentFormState extends State<DocumentForm> {
         _activeAdjustments.contains('discount') && _discount > 0;
     final taxActive = _activeAdjustments.contains('tax') && _taxPct > 0;
     final depositActive =
-        _activeAdjustments.contains('deposit') && _depositPct > 0;
+        _activeAdjustments.contains('deposit') && _depositValue > 0;
 
     final estimate = Estimate(
       estimateId: base?.estimateId ?? 0,
@@ -852,19 +1529,23 @@ class _DocumentFormState extends State<DocumentForm> {
           : base?.expirationDate,
       groupItemsIntoSections: _groupSections,
       subtotal: _subtotal,
-      markupType: markupActive ? AmountType.fixed.apiValue : null,
+      markupType: markupActive
+          ? (_markupType == MarkupType.flat
+              ? AmountType.fixed.apiValue
+              : AmountType.percent.apiValue)
+          : null,
       markupValue: markupActive ? _markup : null,
-      discountType: discountActive ? AmountType.fixed.apiValue : null,
+      discountType: discountActive ? _discountType.apiValue : null,
       discountValue: discountActive ? _discount : null,
-      depositType: depositActive ? AmountType.percent.apiValue : null,
-      depositValue: depositActive ? _depositPct : null,
-      taxName: taxActive ? (base?.taxName ?? 'Tax') : null,
+      depositType: depositActive ? _depositType.apiValue : null,
+      depositValue: depositActive ? _depositValue : null,
+      taxName: taxActive ? (_taxName ?? base?.taxName ?? 'Tax') : null,
       taxRate: taxActive ? _taxPct : null,
       total: _total,
       showClientSignature: _clientSignature,
       showMySignature: _mySignature,
-      notes: base?.notes,
-      privateNotes: base?.privateNotes,
+      notes: _notes,
+      privateNotes: _privateNotes,
       status: base?.status,
       isApproved: base?.isApproved,
       isActive: true,
@@ -1090,15 +1771,26 @@ class _AddRow extends StatelessWidget {
 class _ChipButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final IconData icon;
 
-  const _ChipButton({required this.label, required this.onTap});
+  /// Tints the chip green when the adjustment it represents is already
+  /// applied — it stays tappable (to change/increment the selection).
+  final bool active;
+
+  const _ChipButton({
+    required this.label,
+    required this.onTap,
+    this.icon = Icons.add,
+    this.active = false,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final fg = active ? AppColors.greenDeep : AppColors.inkSoft;
     return Material(
-      color: AppColors.card,
+      color: active ? AppColors.greenTint : AppColors.card,
       shape: StadiumBorder(
-        side: const BorderSide(color: AppColors.line),
+        side: BorderSide(color: active ? AppColors.greenDeep : AppColors.line),
       ),
       child: InkWell(
         onTap: onTap,
@@ -1108,16 +1800,94 @@ class _ChipButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.add, size: 13, color: AppColors.inkSoft),
+              Icon(icon, size: 13, color: fg),
               const SizedBox(width: 5),
               Text(
                 label,
                 style: AppTextStyles.bodySmall
-                    .copyWith(fontWeight: FontWeight.w600),
+                    .copyWith(fontWeight: FontWeight.w600, color: fg),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Thumbnail for a staged local photo (not yet uploaded), with a remove
+/// badge.
+class _StagedPhotoThumb extends StatelessWidget {
+  final XFile file;
+  final VoidCallback onRemove;
+
+  const _StagedPhotoThumb({required this.file, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.file(
+            File(file.path),
+            width: 76,
+            height: 76,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              width: 76,
+              height: 76,
+              color: AppColors.grayTint,
+              child: const Icon(Icons.broken_image_outlined,
+                  size: 18, color: AppColors.inkFaint),
+            ),
+          ),
+        ),
+        Positioned(
+          top: -6,
+          right: -6,
+          child: InkWell(
+            onTap: onRemove,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: const BoxDecoration(
+                color: AppColors.ink,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, size: 13, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dashed-style tile that opens the add-photo flow, matched to
+/// [_StagedPhotoThumb]'s size so it sits inline in the same [Wrap].
+class _AddAttachmentTile extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _AddAttachmentTile({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 76,
+        height: 76,
+        decoration: BoxDecoration(
+          color: AppColors.page,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Icon(icon, size: 22, color: AppColors.greenDeep),
       ),
     );
   }
@@ -1347,6 +2117,78 @@ class _InnerValueRow extends StatelessWidget {
   }
 }
 
+/// Like [_InnerValueRow], but for a note field: shows the note's own text
+/// inline (so expanding the block is enough to read it — no extra sheet
+/// needed) instead of just a generic "Add"/value label.
+class _NoteEntryRow extends StatelessWidget {
+  final String label;
+  final PlanPill? pill;
+  final String? text;
+  final VoidCallback onTap;
+
+  const _NoteEntryRow({
+    required this.label,
+    required this.text,
+    required this.onTap,
+    this.pill,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasText = (text ?? '').trim().isNotEmpty;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: AppColors.line)),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(label,
+                            style: AppTextStyles.labelMedium
+                                .copyWith(fontSize: 13.5)),
+                      ),
+                      if (pill != null) pill!,
+                    ],
+                  ),
+                ),
+                Text(
+                  hasText ? 'Edit' : 'Add',
+                  style: AppTextStyles.labelMedium.copyWith(
+                    fontSize: 13.5,
+                    color: AppColors.inkFaint,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.chevron_right,
+                    size: 15, color: AppColors.inkFaint),
+              ],
+            ),
+            if (hasText) ...[
+              const SizedBox(height: 6),
+              Text(
+                text!.trim(),
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: AppTextStyles.bodyMedium
+                    .copyWith(color: AppColors.inkSoft, height: 1.4),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Bottom sheet that loads the pro's clients and returns the picked one.
 class _ClientPickerSheet extends StatefulWidget {
   final int proId;
@@ -1465,3 +2307,813 @@ class _ClientPickerSheetState extends State<_ClientPickerSheet> {
     );
   }
 }
+
+/// Bottom sheet that loads the pro's saved catalog items (see
+/// `more/screens/items_screen.dart` for the full-screen management view)
+/// and returns the picked one to fill a line item's name + price.
+class _ItemPickerSheet extends StatefulWidget {
+  final int proId;
+  const _ItemPickerSheet({required this.proId});
+
+  @override
+  State<_ItemPickerSheet> createState() => _ItemPickerSheetState();
+}
+
+class _ItemPickerSheetState extends State<_ItemPickerSheet> {
+  late Future<List<Item>> _future;
+  String _query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<Item>> _load() async {
+    final result = await Injection.itemRepository.fetchItems(widget.proId);
+    return result.fold((f) => throw f.message, (items) => items);
+  }
+
+  String _money(double value) {
+    final hasCents = value != value.roundToDouble();
+    return '\$${value.toStringAsFixed(hasCents ? 2 : 0)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.7,
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.grabber,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text('Select item',
+                style: AppTextStyles.headingSmall.copyWith(fontSize: 17)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: TextField(
+                autofocus: false,
+                onChanged: (v) => setState(() => _query = v.toLowerCase()),
+                decoration: InputDecoration(
+                  hintText: 'Search your saved items',
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: AppColors.line),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: FutureBuilder<List<Item>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          '${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.inkSoft),
+                        ),
+                      ),
+                    );
+                  }
+                  final items = (snapshot.data ?? [])
+                      .where((i) =>
+                          _query.isEmpty ||
+                          i.name.toLowerCase().contains(_query) ||
+                          (i.description ?? '').toLowerCase().contains(_query))
+                      .toList()
+                    ..sort((a, b) => a.name.compareTo(b.name));
+                  if (items.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          _query.isEmpty
+                              ? 'No saved items yet — add some from '
+                                  'More > Items.'
+                              : 'No items found.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: items.length,
+                    itemBuilder: (context, i) {
+                      final it = items[i];
+                      return ListTile(
+                        title: Text(it.name, style: AppTextStyles.rowTitle),
+                        subtitle: (it.description ?? '').isNotEmpty
+                            ? Text(it.description!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTextStyles.caption)
+                            : null,
+                        trailing: it.unitPrice != null
+                            ? Text(_money(it.unitPrice!),
+                                style: AppTextStyles.rowAmount
+                                    .copyWith(fontSize: 14))
+                            : Text('Price varies',
+                                style: AppTextStyles.caption.copyWith(
+                                    fontSize: 12, fontWeight: FontWeight.w700)),
+                        onTap: () => Navigator.of(context).pop(it),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet listing the pro's saved tax rates (see
+/// `taxes/screens/taxes_screen.dart`). Picking one always replaces the
+/// estimate's current tax.
+class _TaxPickerSheet extends StatefulWidget {
+  final int proId;
+  final int? selectedId;
+  const _TaxPickerSheet({required this.proId, this.selectedId});
+
+  @override
+  State<_TaxPickerSheet> createState() => _TaxPickerSheetState();
+}
+
+class _TaxPickerSheetState extends State<_TaxPickerSheet> {
+  late Future<List<TaxRate>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<TaxRate>> _load() async {
+    final result = await Injection.taxRepository.fetchTaxes(widget.proId);
+    return result.fold((f) => throw f.message, (taxes) => taxes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.5,
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.grabber,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text('Select tax rate',
+                style: AppTextStyles.headingSmall.copyWith(fontSize: 17)),
+            const SizedBox(height: 4),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined,
+                  size: 20, color: AppColors.inkSoft),
+              title: Text('Custom amount', style: AppTextStyles.rowTitle),
+              subtitle: Text('Enter a one-off rate for this document',
+                  style: AppTextStyles.caption),
+              onTap: () => Navigator.of(context).pop(
+                const TaxRate(id: kCustomPickId, proId: 0, name: '', rate: 0),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: FutureBuilder<List<TaxRate>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          '${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.inkSoft),
+                        ),
+                      ),
+                    );
+                  }
+                  final taxes = snapshot.data ?? [];
+                  if (taxes.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'No saved tax rates yet — add one from '
+                          'More > Taxes.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: taxes.length,
+                    itemBuilder: (context, i) {
+                      final t = taxes[i];
+                      final selected = t.id == widget.selectedId;
+                      return ListTile(
+                        leading: Icon(
+                          selected
+                              ? Icons.check_circle
+                              : Icons.circle_outlined,
+                          size: 20,
+                          color: selected
+                              ? AppColors.greenDeep
+                              : AppColors.inkFaint,
+                        ),
+                        title: Text(t.name, style: AppTextStyles.rowTitle),
+                        trailing: Text(t.displayRate,
+                            style: AppTextStyles.rowAmount
+                                .copyWith(fontSize: 14)),
+                        onTap: () => Navigator.of(context).pop(t),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet listing the pro's saved markup templates (see
+/// `more/screens/markups_screen.dart`). Picking a new template replaces the
+/// estimate's current markup; re-picking the one already applied stacks
+/// (adds) its rate instead, so a markup can be applied more than once.
+class _MarkupPickerSheet extends StatefulWidget {
+  final int proId;
+  final int? selectedId;
+  const _MarkupPickerSheet({required this.proId, this.selectedId});
+
+  @override
+  State<_MarkupPickerSheet> createState() => _MarkupPickerSheetState();
+}
+
+class _MarkupPickerSheetState extends State<_MarkupPickerSheet> {
+  late Future<List<MarkupTemplate>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _load();
+  }
+
+  Future<List<MarkupTemplate>> _load() async {
+    final result = await Injection.markupRepository.fetchMarkups(widget.proId);
+    return result.fold((f) => throw f.message, (markups) => markups);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: SizedBox(
+        height: MediaQuery.of(context).size.height * 0.5,
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: 10, bottom: 12),
+              decoration: BoxDecoration(
+                color: AppColors.grabber,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            Text('Select markup',
+                style: AppTextStyles.headingSmall.copyWith(fontSize: 17)),
+            const SizedBox(height: 4),
+            ListTile(
+              leading: const Icon(Icons.edit_outlined,
+                  size: 20, color: AppColors.inkSoft),
+              title: Text('Custom amount', style: AppTextStyles.rowTitle),
+              subtitle: Text('Enter a one-off markup for this document',
+                  style: AppTextStyles.caption),
+              onTap: () => Navigator.of(context).pop(
+                const MarkupTemplate(
+                    id: kCustomPickId,
+                    proId: 0,
+                    name: '',
+                    type: MarkupType.flat,
+                    rate: 0),
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: FutureBuilder<List<MarkupTemplate>>(
+                future: _future,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          '${snapshot.error}',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.bodyMedium
+                              .copyWith(color: AppColors.inkSoft),
+                        ),
+                      ),
+                    );
+                  }
+                  final markups = snapshot.data ?? [];
+                  if (markups.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'No saved markup templates yet — add one from '
+                          'More > Markups.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.caption,
+                        ),
+                      ),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: markups.length,
+                    itemBuilder: (context, i) {
+                      final m = markups[i];
+                      final selected = m.id == widget.selectedId;
+                      return ListTile(
+                        leading: Icon(
+                          selected
+                              ? Icons.check_circle
+                              : Icons.circle_outlined,
+                          size: 20,
+                          color: selected
+                              ? AppColors.greenDeep
+                              : AppColors.inkFaint,
+                        ),
+                        title: Text(m.name, style: AppTextStyles.rowTitle),
+                        subtitle: selected
+                            ? Text('Applied — tap to add another ${m.displayRate}',
+                                style: AppTextStyles.caption
+                                    .copyWith(color: AppColors.greenDeep))
+                            : null,
+                        trailing: Text(m.displayRate,
+                            style: AppTextStyles.rowAmount
+                                .copyWith(fontSize: 14)),
+                        onTap: () => Navigator.of(context).pop(m),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet for choosing how an amount (discount or deposit) is
+/// calculated — a percentage of the total, or a fixed dollar amount — and
+/// its value. Pops with `(type, value)` on Apply, or null on cancel/close.
+class _AmountPickerSheet extends StatefulWidget {
+  final String title;
+  final String amountLabel;
+  final AmountType initialType;
+  final double initialValue;
+
+  const _AmountPickerSheet({
+    required this.title,
+    required this.amountLabel,
+    required this.initialType,
+    required this.initialValue,
+  });
+
+  @override
+  State<_AmountPickerSheet> createState() => _AmountPickerSheetState();
+}
+
+class _AmountPickerSheetState extends State<_AmountPickerSheet> {
+  late AmountType _type;
+  late final TextEditingController _value;
+
+  @override
+  void initState() {
+    super.initState();
+    _type = widget.initialType;
+    _value = TextEditingController(text: _fmt(widget.initialValue));
+  }
+
+  @override
+  void dispose() {
+    _value.dispose();
+    super.dispose();
+  }
+
+  String _fmt(double v) =>
+      v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+
+  double get _numeric => double.tryParse(_value.text.trim())?.abs() ?? 0;
+
+  void _setType(AmountType v) {
+    setState(() {
+      _type = v;
+      // A percentage above 100 makes no sense — clamp if they'd switched
+      // from a large fixed amount.
+      if (v == AmountType.percent && _numeric > 100) {
+        _value.text = _fmt(100);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 18, 12, 16),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: AppColors.line)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(widget.title,
+                          style:
+                              AppTextStyles.headingSmall.copyWith(fontSize: 19)),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      borderRadius: BorderRadius.circular(16),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child:
+                            Icon(Icons.close, size: 22, color: AppColors.inkSoft),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(widget.amountLabel,
+                        style: AppTextStyles.rowTitle.copyWith(fontSize: 15)),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        _AmountTypeOption(
+                          label: 'Percentage (%)',
+                          value: AmountType.percent,
+                          groupValue: _type,
+                          onChanged: _setType,
+                        ),
+                        const SizedBox(width: 28),
+                        _AmountTypeOption(
+                          label: 'Fixed Amount (\$)',
+                          value: AmountType.fixed,
+                          groupValue: _type,
+                          onChanged: _setType,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.line),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _value,
+                              keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                    RegExp(r'^\d*\.?\d{0,2}')),
+                              ],
+                              style:
+                                  AppTextStyles.headingSmall.copyWith(fontSize: 18),
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 14),
+                              ),
+                            ),
+                          ),
+                          Container(width: 1, height: 44, color: AppColors.line),
+                          Container(
+                            width: 44,
+                            height: 52,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: AppColors.page,
+                              borderRadius:
+                                  BorderRadius.horizontal(right: Radius.circular(10)),
+                            ),
+                            child: Text(
+                              _type == AmountType.percent ? '%' : '\$',
+                              style: AppTextStyles.rowTitle
+                                  .copyWith(color: AppColors.inkSoft),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.inkSoft,
+                              side: const BorderSide(color: AppColors.line),
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: AppTextStyles.buttonText
+                                  .copyWith(fontSize: 15),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(context).pop((_type, _numeric)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.green800,
+                              foregroundColor: Colors.white,
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: AppTextStyles.buttonText
+                                  .copyWith(fontSize: 15),
+                            ),
+                            child: const Text('Apply'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AmountTypeOption extends StatelessWidget {
+  final String label;
+  final AmountType value;
+  final AmountType groupValue;
+  final ValueChanged<AmountType> onChanged;
+
+  const _AmountTypeOption({
+    required this.label,
+    required this.value,
+    required this.groupValue,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = value == groupValue;
+    return GestureDetector(
+      onTap: () => onChanged(value),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 20,
+            height: 20,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: selected ? AppColors.greenDeep : AppColors.inkFaint,
+                width: 2,
+              ),
+            ),
+            child: selected
+                ? Center(
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.greenDeep,
+                      ),
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 7),
+          Text(label, style: AppTextStyles.rowTitle.copyWith(fontSize: 14.5)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom sheet for entering or editing a note. Pops with the trimmed text
+/// on Save, or null on cancel/close (an empty save clears the note).
+class _NotesSheet extends StatefulWidget {
+  final String title;
+  final String hint;
+  final String initialText;
+
+  const _NotesSheet({
+    required this.title,
+    required this.hint,
+    required this.initialText,
+  });
+
+  @override
+  State<_NotesSheet> createState() => _NotesSheetState();
+}
+
+class _NotesSheetState extends State<_NotesSheet> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialText);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: AppColors.card,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 18, 12, 16),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: AppColors.line)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(widget.title,
+                          style:
+                              AppTextStyles.headingSmall.copyWith(fontSize: 19)),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.of(context).pop(),
+                      borderRadius: BorderRadius.circular(16),
+                      child: const Padding(
+                        padding: EdgeInsets.all(6),
+                        child:
+                            Icon(Icons.close, size: 22, color: AppColors.inkSoft),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: _controller,
+                      autofocus: true,
+                      minLines: 4,
+                      maxLines: 8,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: AppTextStyles.bodyMedium,
+                      decoration: InputDecoration(
+                        hintText: widget.hint,
+                        filled: true,
+                        fillColor: AppColors.page,
+                        hintStyle: AppTextStyles.bodyMedium
+                            .copyWith(color: AppColors.inkFaint, height: 1.4),
+                        contentPadding: const EdgeInsets.all(13),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide:
+                              const BorderSide(color: AppColors.line, width: 1.5),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(11),
+                          borderSide: const BorderSide(
+                              color: AppColors.greenDeep, width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.inkSoft,
+                              side: const BorderSide(color: AppColors.line),
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: AppTextStyles.buttonText
+                                  .copyWith(fontSize: 15),
+                            ),
+                            child: const Text('Cancel'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(context).pop(_controller.text),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.green800,
+                              foregroundColor: Colors.white,
+                              shape: const StadiumBorder(),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              textStyle: AppTextStyles.buttonText
+                                  .copyWith(fontSize: 15),
+                            ),
+                            child: const Text('Save'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
