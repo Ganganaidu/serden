@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../../core/config/app_config.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
@@ -12,6 +12,8 @@ import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/pill_tabs.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../core/widgets/tip_banner.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../bloc/invoice_bloc.dart';
 import '../models/invoice_model.dart';
 
 class InvoiceListScreen extends StatefulWidget {
@@ -22,97 +24,190 @@ class InvoiceListScreen extends StatefulWidget {
 }
 
 class _InvoiceListScreenState extends State<InvoiceListScreen> {
-  // Real invoices API isn't wired up yet — show sample data only in
-  // mock mode; a real logged-in user starts with none (empty state).
-  final List<Invoice> _invoices =
-      AppConfig.useMockData ? mockInvoices : const [];
   int _tabIndex = 0;
   String _search = '';
+  bool _hasFetched = false;
+  late final GoRouter _goRouter;
 
-  bool _inTab(Invoice invoice, int tab) => switch (tab) {
-        1 => invoice.overdue,
-        2 => invoice.isPaid,
-        _ => !invoice.isPaid,
-      };
+  static const _tabOrder = [
+    InvoiceTab.active,
+    InvoiceTab.overdue,
+    InvoiceTab.paid,
+  ];
 
-  List<Invoice> get _filtered {
-    final q = _search.trim().toLowerCase();
-    return _invoices
-        .where((inv) =>
-            _inTab(inv, _tabIndex) &&
-            (q.isEmpty ||
-                inv.clientName.toLowerCase().contains(q) ||
-                inv.number.toString().contains(q) ||
-                inv.total.toString().contains(q)))
-        .toList();
+  @override
+  void initState() {
+    super.initState();
+    _goRouter = GoRouter.of(context);
+    _goRouter.routeInformationProvider.addListener(_onRouteChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchOnce());
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_invoices.isEmpty) return const _InvoicesEmptyView();
+  void dispose() {
+    _goRouter.routeInformationProvider.removeListener(_onRouteChanged);
+    super.dispose();
+  }
 
-    final open = _invoices
-        .where((i) => !i.isPaid && i.status != DocumentStatus.draft)
+  void _onRouteChanged() {
+    final path = _goRouter.routeInformationProvider.value.uri.path;
+    if (path == AppRoutes.invoices) _refresh();
+  }
+
+  void _fetchOnce() {
+    if (_hasFetched) return;
+    final proId = _proId;
+    if (proId == null) return;
+    _hasFetched = true;
+    context.read<InvoiceBloc>().add(InvoicesFetchRequested(proId));
+  }
+
+  void _refresh() {
+    final proId = _proId;
+    if (proId == null) return;
+    context.read<InvoiceBloc>().add(InvoicesFetchRequested(proId));
+  }
+
+  Future<void> _handleRefresh() async {
+    _refresh();
+    try {
+      await context
+          .read<InvoiceBloc>()
+          .stream
+          .firstWhere((s) => s is InvoicesLoaded || s is InvoicesError)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {}
+  }
+
+  int? get _proId {
+    final authState = context.read<AuthBloc>().state;
+    return authState is AuthAuthenticated ? authState.user.proId : null;
+  }
+
+  List<InvoiceSummary> _filtered(List<InvoiceSummary> all) {
+    final q = _search.trim().toLowerCase();
+    return all
+        .where((i) =>
+            i.tab == _tabOrder[_tabIndex] &&
+            (q.isEmpty ||
+                i.clientName.toLowerCase().contains(q) ||
+                i.number.toString().contains(q) ||
+                (i.total.toStringAsFixed(0).contains(q))))
         .toList();
-    final outstanding = open.fold<double>(0, (sum, i) => sum + i.balance);
-    final late = _invoices
-        .where((i) => i.overdue)
-        .fold<double>(0, (sum, i) => sum + i.balance);
+  }
 
-    return Scaffold(
-      body: Column(
-        children: [
-          AppHeader(
-            title: 'Invoices',
-            subtitleSpans: [
-              TextSpan(
-                text: Formatters.currencyShort(outstanding),
-                style: const TextStyle(
-                    color: Colors.white, fontWeight: FontWeight.w700),
-              ),
-              const TextSpan(text: ' outstanding'),
-              if (late > 0) ...[
-                const TextSpan(text: ' · '),
-                TextSpan(
-                  text: '${Formatters.currencyShort(late)} overdue',
-                  style: const TextStyle(
-                    color: AppColors.overdueOnHeader,
-                    fontWeight: FontWeight.w700,
+  int _count(List<InvoiceSummary> all, InvoiceTab tab) =>
+      all.where((i) => i.tab == tab).length;
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<InvoiceBloc, InvoicesState>(
+      builder: (context, state) {
+        if (state is InvoicesInitial || state is InvoicesLoading) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (state is InvoicesError) {
+          return Scaffold(
+            body: Column(
+              children: [
+                AppHeader(
+                  title: 'Invoices',
+                  actions: [const NotificationBellButton()],
+                ),
+                Expanded(
+                  child: EmptyState(
+                    title: 'Could not load invoices',
+                    description: state.message,
                   ),
                 ),
               ],
-            ],
-            actions: [const NotificationBellButton()],
-            bottom: HeaderSearchBar(
-              hint: 'Search client, number, or amount',
-              onChanged: (v) => setState(() => _search = v),
+            ),
+          );
+        }
+
+        final invoices = switch (state) {
+          InvoicesLoaded(:final invoices) => invoices,
+          InvoiceMutating(:final invoices) => invoices,
+          InvoiceMutateSuccess(:final invoices) => invoices,
+          InvoiceMutateFailure(:final invoices) => invoices,
+          _ => <InvoiceSummary>[],
+        };
+
+        if (invoices.isEmpty) return const _InvoicesEmptyView();
+
+        final open = invoices
+            .where((i) =>
+                i.tab == InvoiceTab.active || i.tab == InvoiceTab.overdue)
+            .toList();
+        final outstanding =
+            open.fold<double>(0, (sum, i) => sum + i.balance);
+        final overdueAmt = invoices
+            .where((i) => i.tab == InvoiceTab.overdue)
+            .fold<double>(0, (sum, i) => sum + i.balance);
+
+        return Scaffold(
+          body: RefreshIndicator(
+            onRefresh: _handleRefresh,
+            color: AppColors.primary,
+            child: Column(
+              children: [
+                AppHeader(
+                  title: 'Invoices',
+                  subtitleSpans: [
+                    TextSpan(
+                      text: Formatters.currencyShort(outstanding),
+                      style: const TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.w700),
+                    ),
+                    const TextSpan(text: ' outstanding'),
+                    if (overdueAmt > 0) ...[
+                      const TextSpan(text: ' · '),
+                      TextSpan(
+                        text:
+                            '${Formatters.currencyShort(overdueAmt)} overdue',
+                        style: const TextStyle(
+                          color: AppColors.overdueOnHeader,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ],
+                  actions: [const NotificationBellButton()],
+                  bottom: HeaderSearchBar(
+                    hint: 'Search client, number, or amount',
+                    onChanged: (v) => setState(() => _search = v),
+                  ),
+                ),
+                PillTabs(
+                  tabs: [
+                    PillTab('Active',
+                        count: _count(invoices, InvoiceTab.active)),
+                    PillTab('Overdue',
+                        count: _count(invoices, InvoiceTab.overdue),
+                        activeColor: AppColors.redDeep),
+                    PillTab('Paid',
+                        count: _count(invoices, InvoiceTab.paid)),
+                  ],
+                  selectedIndex: _tabIndex,
+                  onChanged: (i) => setState(() => _tabIndex = i),
+                ),
+                Expanded(child: _list(invoices)),
+              ],
             ),
           ),
-          PillTabs(
-            tabs: [
-              PillTab('Active',
-                  count: _invoices.where((i) => _inTab(i, 0)).length),
-              PillTab('Overdue',
-                  count: _invoices.where((i) => _inTab(i, 1)).length,
-                  activeColor: AppColors.redDeep),
-              PillTab('Paid',
-                  count: _invoices.where((i) => _inTab(i, 2)).length),
-            ],
-            selectedIndex: _tabIndex,
-            onChanged: (i) => setState(() => _tabIndex = i),
+          floatingActionButton: AppFab(
+            label: 'New invoice',
+            onPressed: () => context.push(AppRoutes.newInvoice),
           ),
-          Expanded(child: _list()),
-        ],
-      ),
-      floatingActionButton: AppFab(
-        label: 'New invoice',
-        onPressed: () => context.push(AppRoutes.newInvoice),
-      ),
+        );
+      },
     );
   }
 
-  Widget _list() {
-    final rows = _filtered;
+  Widget _list(List<InvoiceSummary> all) {
+    final rows = _filtered(all);
     if (rows.isEmpty) {
       final searching = _search.trim().isNotEmpty;
       return EmptyState(
@@ -168,8 +263,8 @@ class _MonthHeader extends StatelessWidget {
             Text(label.toUpperCase(), style: AppTextStyles.sectionLabel),
             Text(
               total,
-              style: AppTextStyles.caption
-                  .copyWith(fontWeight: FontWeight.w700),
+              style:
+                  AppTextStyles.caption.copyWith(fontWeight: FontWeight.w700),
             ),
           ],
         ),
@@ -177,15 +272,16 @@ class _MonthHeader extends StatelessWidget {
 }
 
 class _InvoiceRow extends StatelessWidget {
-  final Invoice invoice;
+  final InvoiceSummary invoice;
   final VoidCallback onTap;
   const _InvoiceRow({required this.invoice, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final isOverdue = invoice.isOverdue;
     final chipStatus =
-        invoice.overdue ? DocumentStatus.overdue : invoice.status;
-    final chipLabel = invoice.overdue ? 'Overdue' : invoice.statusNote;
+        isOverdue ? DocumentStatus.overdue : invoice.docStatus;
+    final chipLabel = isOverdue ? 'Overdue' : invoice.statusNote;
 
     return Material(
       color: AppColors.card,
@@ -195,13 +291,13 @@ class _InvoiceRow extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border(
               bottom: const BorderSide(color: AppColors.line),
-              left: invoice.overdue
+              left: isOverdue
                   ? const BorderSide(color: AppColors.redDeep, width: 3)
                   : BorderSide.none,
             ),
           ),
-          padding: EdgeInsets.fromLTRB(
-              invoice.overdue ? 17 : 20, 14, 20, 14),
+          padding:
+              EdgeInsets.fromLTRB(isOverdue ? 17 : 20, 14, 20, 14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -221,11 +317,11 @@ class _InvoiceRow extends StatelessWidget {
                         text:
                             '${Formatters.dateShort(invoice.date)} · #${invoice.number}',
                         children: [
-                          if (invoice.due.isNotEmpty) ...[
+                          if (invoice.dueNote.isNotEmpty) ...[
                             const TextSpan(text: ' · '),
                             TextSpan(
-                              text: invoice.due,
-                              style: invoice.overdue
+                              text: invoice.dueNote,
+                              style: isOverdue
                                   ? const TextStyle(
                                       color: AppColors.redDeep,
                                       fontWeight: FontWeight.w700,
@@ -244,7 +340,7 @@ class _InvoiceRow extends StatelessWidget {
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(2),
                           child: LinearProgressIndicator(
-                            value: invoice.paid / invoice.total,
+                            value: invoice.paidAmount / invoice.total,
                             minHeight: 4,
                             backgroundColor: AppColors.grayTint,
                             color: AppColors.greenDeep,
@@ -387,9 +483,9 @@ class _InvoicesEmptyView extends StatelessWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 26, vertical: 15),
             ),
-            child: Row(
+            child: const Row(
               mainAxisSize: MainAxisSize.min,
-              children: const [
+              children: [
                 Text('Create an invoice'),
                 SizedBox(width: 8),
                 Icon(Icons.arrow_forward, size: 17),
@@ -420,8 +516,8 @@ class _InvoicesEmptyView extends StatelessWidget {
             title: 'How it works',
             padding: EdgeInsets.only(bottom: 12),
           ),
-          Row(
-            children: const [
+          const Row(
+            children: [
               _FlowStep(
                   icon: Icons.description_outlined,
                   label: 'Build it in minutes'),
@@ -483,7 +579,6 @@ class _FlowArrow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => const Padding(
         padding: EdgeInsets.symmetric(horizontal: 3),
-        child:
-            Icon(Icons.arrow_forward, size: 14, color: AppColors.inkFaint),
+        child: Icon(Icons.arrow_forward, size: 14, color: AppColors.inkFaint),
       );
 }

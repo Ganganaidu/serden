@@ -6,6 +6,9 @@ import '../../features/clients/repository/client_repository.dart';
 import '../../features/estimates/bloc/estimate_bloc.dart';
 import '../../features/estimates/cubit/estimate_detail_cubit.dart';
 import '../../features/estimates/repository/estimate_repository.dart';
+import '../../features/invoices/bloc/invoice_bloc.dart';
+import '../../features/invoices/cubit/invoice_detail_cubit.dart';
+import '../../features/invoices/repository/invoice_repository.dart';
 import '../../features/items/cubit/items_cubit.dart';
 import '../../features/items/cubit/markups_cubit.dart';
 import '../../features/items/repository/markup_repository.dart';
@@ -40,6 +43,7 @@ class Injection {
   static late AuthRepository _authRepository;
   static late ClientRepository _clientRepository;
   static late EstimateRepository _estimateRepository;
+  static late InvoiceRepository _invoiceRepository;
   static late LeadRepository _leadRepository;
   static late ItemRepository _itemRepository;
   static late MarkupRepository _markupRepository;
@@ -59,6 +63,7 @@ class Injection {
     );
     _clientRepository = ClientRepositoryImpl(apiClient: _apiClient);
     _estimateRepository = EstimateRepositoryImpl(apiClient: _apiClient);
+    _invoiceRepository = InvoiceRepositoryImpl(apiClient: _apiClient);
     _leadRepository = LeadRepositoryImpl(apiClient: _apiClient);
     _itemRepository = ItemRepositoryImpl(apiClient: _apiClient);
     _markupRepository = MarkupRepositoryImpl(apiClient: _apiClient);
@@ -75,6 +80,7 @@ class Injection {
   static AuthRepository get authRepository => _authRepository;
   static ClientRepository get clientRepository => _clientRepository;
   static EstimateRepository get estimateRepository => _estimateRepository;
+  static InvoiceRepository get invoiceRepository => _invoiceRepository;
   static LeadRepository get leadRepository => _leadRepository;
   static ItemRepository get itemRepository => _itemRepository;
   static MarkupRepository get markupRepository => _markupRepository;
@@ -95,6 +101,16 @@ class Injection {
   static EstimateDetailCubit createEstimateDetailCubit() =>
       EstimateDetailCubit(
         repository: _estimateRepository,
+        companyRepository: _companyProfileRepository,
+        clientRepository: _clientRepository,
+      );
+
+  static InvoiceBloc createInvoiceBloc() =>
+      InvoiceBloc(repository: _invoiceRepository);
+
+  static InvoiceDetailCubit createInvoiceDetailCubit() =>
+      InvoiceDetailCubit(
+        repository: _invoiceRepository,
         companyRepository: _companyProfileRepository,
         clientRepository: _clientRepository,
       );

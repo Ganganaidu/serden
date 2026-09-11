@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_colors.dart';
+import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
+import '../../../core/widgets/status_badge.dart';
 import '../../../shared/widgets/paper_document.dart';
+import '../../auth/bloc/auth_bloc.dart';
+import '../cubit/invoice_detail_cubit.dart';
+import '../models/invoice_model.dart';
 
-/// Invoice document preview (#96 in the mockups): toolbar,
-/// status band, desktop/mobile toggle, and three paper pages.
+/// Invoice document preview — toolbar, status band, desktop/mobile toggle,
+/// and paper pages. Driven by the API (`GET /api/Invoices/{id}`).
 class InvoiceDetailScreen extends StatefulWidget {
   final String id;
   const InvoiceDetailScreen({super.key, required this.id});
@@ -16,7 +24,19 @@ class InvoiceDetailScreen extends StatefulWidget {
 
 class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   bool _mobileMode = false;
-  String _status = 'unpaid';
+
+  int get _invoiceId => int.tryParse(widget.id) ?? 0;
+
+  int? get _userId {
+    final s = context.read<AuthBloc>().state;
+    return s is AuthAuthenticated ? s.user.userId : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    context.read<InvoiceDetailCubit>().fetch(_invoiceId, userId: _userId);
+  }
 
   static const _statusOptions = [
     StatusBandOption(
@@ -34,78 +54,259 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     StatusBandOption(
       key: 'overdue',
       bandLabel: 'Overdue',
-      menuLabel: 'Mark as overdue',
+      menuLabel: 'Overdue',
       kind: StatusBandKind.negative,
     ),
   ];
 
+  String _statusKey(Invoice invoice) {
+    switch (invoice.docStatus) {
+      case DocumentStatus.paid:
+        return 'paid';
+      case DocumentStatus.overdue:
+        return 'overdue';
+      default:
+        return 'unpaid';
+    }
+  }
+
+  String _dueBandLabel(Invoice invoice) {
+    final d = invoice.dueDate;
+    if (invoice.docStatus == DocumentStatus.paid) return 'Paid in full';
+    if (invoice.docStatus == DocumentStatus.overdue) return 'Overdue';
+    if (d != null) return 'Due ${Formatters.dateShort(d)}';
+    return 'Due upon receipt';
+  }
+
+  Future<void> _handleSend(Invoice invoice) async {
+    await context.read<InvoiceDetailCubit>().send(invoice.invoiceId);
+  }
+
+  Future<void> _handleMarkPaid(Invoice invoice) async {
+    final publicId = invoice.publicId;
+    if (publicId == null) return;
+    await context.read<InvoiceDetailCubit>().markPaid(publicId);
+  }
+
+  Future<void> _handleDelete(Invoice invoice) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete invoice?'),
+        content: const Text(
+            'This invoice will be permanently deleted and cannot be recovered.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete',
+                  style: TextStyle(color: AppColors.redDeep))),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await context.read<InvoiceDetailCubit>().delete(invoice.invoiceId);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Column(
-        children: [
-          DetailHeader(
-            backLabel: 'Invoices',
-            title: '#${widget.id}',
-            actions: [
-              TextButton(
-                onPressed: () {},
-                style: TextButton.styleFrom(foregroundColor: Colors.white),
-                child: const Text('Edit'),
-              ),
-            ],
-          ),
-          DocumentToolbar(
-            actions: [
-              ToolbarAction(Icons.send_outlined, 'Send', onTap: () {}),
-              ToolbarAction(Icons.tap_and_play, 'Tap to pay', onTap: () {}),
-              ToolbarAction(
-                Icons.payments_outlined,
-                'Payments',
-                onTap: () =>
-                    context.push('/invoices/${widget.id}/record-payment'),
-              ),
-              ToolbarAction(Icons.more_horiz, 'More', onTap: () {}),
-            ],
-          ),
-          StatusBand(
-            options: _statusOptions,
-            currentKey: _status,
-            onChanged: (s) => setState(() => _status = s),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: ViewToggle(
-              mobileMode: _mobileMode,
-              onChanged: (m) => setState(() => _mobileMode = m),
+    return BlocConsumer<InvoiceDetailCubit, InvoiceDetailState>(
+      listener: (context, state) {
+        if (state is InvoiceDetailDeleted) {
+          context.go('/invoices');
+        }
+        if (state is InvoiceDetailActionSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.greenDeep,
             ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+          );
+        }
+        if (state is InvoiceDetailActionFailure) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.redDeep,
+            ),
+          );
+        }
+      },
+      builder: (context, state) {
+        final invoice = switch (state) {
+          InvoiceDetailLoaded(:final invoice) => invoice,
+          InvoiceDetailLoading(:final preview) => preview,
+          InvoiceDetailError(:final stale) => stale,
+          InvoiceDetailBusy(:final invoice) => invoice,
+          InvoiceDetailActionSuccess(:final invoice) => invoice,
+          InvoiceDetailActionFailure(:final invoice) => invoice,
+          _ => null,
+        };
+
+        final isLoading = state is InvoiceDetailLoading;
+        final isBusy = state is InvoiceDetailBusy;
+        final errorMessage =
+            state is InvoiceDetailError ? state.message : null;
+
+        return LoadingOverlay(
+          isLoading: isBusy,
+          child: Scaffold(
+            body: Column(
               children: [
-                PaperPage(mobile: _mobileMode, footer: const DocPageNote('Page 1 of 3'), child: _pageOne()),
-                const SizedBox(height: 14),
-                PaperPage(mobile: _mobileMode, footer: const DocPageNote('Page 2 of 3'), child: _pageTwo()),
-                const SizedBox(height: 14),
-                PaperPage(mobile: _mobileMode, footer: const DocPageNote('Page 3 of 3'), child: _pageThree()),
-                const DocNotesCard(
-                  text:
-                      '50% deposit collected at project start. Balance due upon receipt.\n\n'
-                      'Serden Group LLC (Insured | Licensed | Bonded)\n'
-                      'LICENSE # SERDEGL826PD\n'
-                      'serdenco.com',
+                DetailHeader(
+                  backLabel: 'Invoices',
+                  title: invoice != null
+                      ? '#${invoice.number}'
+                      : '#${widget.id}',
+                  actions: [
+                    if (invoice != null)
+                      TextButton(
+                        onPressed: isBusy ? null : () {},
+                        style: TextButton.styleFrom(
+                            foregroundColor: Colors.white),
+                        child: const Text('Edit'),
+                      ),
+                  ],
+                ),
+                if (invoice != null) ...[
+                  DocumentToolbar(
+                    actions: [
+                      ToolbarAction(
+                        Icons.send_outlined,
+                        'Send',
+                        onTap: isBusy ? null : () => _handleSend(invoice),
+                      ),
+                      ToolbarAction(
+                        Icons.payments_outlined,
+                        'Payments',
+                        onTap: () => context
+                            .push('/invoices/${widget.id}/record-payment'),
+                      ),
+                      ToolbarAction(
+                        Icons.check_circle_outline,
+                        'Mark paid',
+                        onTap: (isBusy ||
+                                invoice.docStatus == DocumentStatus.paid)
+                            ? null
+                            : () => _handleMarkPaid(invoice),
+                      ),
+                      ToolbarAction(
+                        Icons.more_horiz,
+                        'More',
+                        onTap: isBusy
+                            ? null
+                            : () => _showMoreSheet(context, invoice),
+                      ),
+                    ],
+                  ),
+                  StatusBand(
+                    options: [
+                      StatusBandOption(
+                        key: 'unpaid',
+                        bandLabel: _dueBandLabel(invoice),
+                        menuLabel: 'Unpaid',
+                        kind: StatusBandKind.pending,
+                      ),
+                      ..._statusOptions.skip(1),
+                    ],
+                    currentKey: _statusKey(invoice),
+                    onChanged: (key) {
+                      if (key == 'paid' && !isBusy) _handleMarkPaid(invoice);
+                    },
+                  ),
+                ],
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: ViewToggle(
+                    mobileMode: _mobileMode,
+                    onChanged: (m) => setState(() => _mobileMode = m),
+                  ),
+                ),
+                Expanded(
+                  child: isLoading && invoice == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : errorMessage != null && invoice == null
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text(errorMessage,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                        color: AppColors.inkSoft)),
+                              ),
+                            )
+                          : invoice == null
+                              ? const SizedBox.shrink()
+                              : ListView(
+                                  padding: const EdgeInsets.fromLTRB(
+                                      16, 14, 16, 24),
+                                  children: [
+                                    PaperPage(
+                                        mobile: _mobileMode,
+                                        footer:
+                                            const DocPageNote('Page 1 of 3'),
+                                        child: _pageOne(invoice)),
+                                    const SizedBox(height: 14),
+                                    PaperPage(
+                                        mobile: _mobileMode,
+                                        footer:
+                                            const DocPageNote('Page 2 of 3'),
+                                        child: _pageTwo(invoice)),
+                                    const SizedBox(height: 14),
+                                    PaperPage(
+                                        mobile: _mobileMode,
+                                        footer:
+                                            const DocPageNote('Page 3 of 3'),
+                                        child: _pageThree(invoice)),
+                                    if (invoice.notes?.isNotEmpty == true)
+                                      DocNotesCard(text: invoice.notes!),
+                                  ],
+                                ),
                 ),
               ],
             ),
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  void _showMoreSheet(BuildContext context, Invoice invoice) {
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: AppColors.redDeep),
+              title: const Text('Delete invoice',
+                  style: TextStyle(color: AppColors.redDeep)),
+              onTap: () {
+                Navigator.pop(context);
+                _handleDelete(invoice);
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _pageOne() {
+  Widget _pageOne(Invoice invoice) {
     final m = _mobileMode;
+    final clientDetail = [
+      if (invoice.clientName?.isNotEmpty == true) invoice.clientName!,
+    ].join('\n');
+
+    final proDetails = [
+      if (invoice.proAddress?.isNotEmpty == true) invoice.proAddress!,
+      if (invoice.proEmail?.isNotEmpty == true) invoice.proEmail!,
+    ].join('\n');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -117,14 +318,16 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Invoice #${widget.id}',
+                Text('Invoice #${invoice.number}',
                     style: docStyle(
                         size: 24,
                         weight: FontWeight.w700,
                         color: const Color(0xFF1C1C1E),
                         height: 1.2)),
                 const SizedBox(height: 5),
-                Text('Date: 06/30/2026', style: docStyle(size: 14)),
+                Text(
+                    'Date: ${Formatters.dateShort(invoice.invoiceDate)}',
+                    style: docStyle(size: 14)),
               ],
             ),
           ),
@@ -132,15 +335,12 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DocLogoBlock(mobile: m),
+              DocLogoBlock(mobile: m, companyName: invoice.proName),
               const SizedBox(height: 18),
               DocPreparedBlock(
                 mobile: m,
                 label: 'Bill To',
-                detail: 'Praveen Kumar\n'
-                    '12801 SE 24th St\n'
-                    'Vancouver, WA 98683\n'
-                    '(360) 980-0168',
+                detail: clientDetail,
               ),
             ],
           )
@@ -148,99 +348,64 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DocLogoBlock(mobile: m),
+              DocLogoBlock(mobile: m, companyName: invoice.proName),
               const Spacer(),
               DocPreparedBlock(
                 mobile: m,
                 label: 'Bill To',
-                detail: 'Praveen Kumar\n'
-                    '12801 SE 24th St\n'
-                    'Vancouver, WA 98683\n'
-                    '(360) 980-0168',
+                detail: clientDetail,
               ),
             ],
           ),
         SizedBox(height: m ? 20 : 30),
         if (m)
-          DocCompanyBlock(mobile: m)
+          DocCompanyBlock(mobile: m, name: invoice.proName, details: proDetails)
         else
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DocCompanyBlock(mobile: m),
+              DocCompanyBlock(
+                  mobile: m, name: invoice.proName, details: proDetails),
               const Spacer(),
               SizedBox(
                 width: 240,
                 child: Column(
-                  children: const [
-                    DocMetaRow('Payment terms', 'Due upon receipt'),
-                    DocMetaRow('Invoice #', '96'),
-                    DocMetaRow('Date', '06/30/2026'),
+                  children: [
+                    DocMetaRow(
+                        'Payment terms',
+                        invoice.daysToPay != null
+                            ? 'Net ${invoice.daysToPay}'
+                            : 'Due upon receipt'),
+                    DocMetaRow('Invoice #', invoice.number.toString()),
+                    DocMetaRow('Date',
+                        Formatters.dateShort(invoice.invoiceDate)),
+                    if (invoice.dueDate != null)
+                      DocMetaRow('Due date',
+                          Formatters.dateShort(invoice.dueDate!)),
                   ],
                 ),
               ),
             ],
           ),
         DocDescriptionLabel(mobile: m),
-        DocSection(
-          mobile: m,
-          title: 'Addition',
-          amount: '\$163,200.23',
-          body: [
-            Text(
-              'HARD COSTS: Construction Phase',
-              style: docStyle(
-                size: m ? 15.5 : 14,
-                color: const Color(0xFF1C1C1E),
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 14),
-            const Text(
-                'Proposed Address:\n12801 SE 24th St\nVancouver, WA 98683'),
-            const SizedBox(height: 14),
-            const Text('SCOPE: ADDING 2 story addition 22x28 w/ 2 bathrooms'),
-            const SizedBox(height: 14),
-            const Text('Whats Included in quote:\n'
-                'Demolition of existing Structure & Create opening\n'
-                'Site Prep & Excavation Work\n'
-                'Foundation\n'
-                'Framing & Sheeting & Trusse Install\n'
-                'Electrical Work - (wiring for Can lights, Light Fixtures, Switches, plugs etc)\n'
-                'Plumbing Work - (connections for new layout)\n'
-                'Install Roof to match (Match Existing roofline)\n'
-                'Siding & trim (Match to Existing)\n'
-                'Insulation (all exterior walls of the addition)\n'
-                'Drywall/Mudding/Texture\n'
-                'Install 13 Standard Vinyl Window (Standard Milgard builder grade)\n'
-                'Install exterior patio door\n'
-                'Haul away all job related debris\n'
-                'Final Clean up & inspection'),
-            const SizedBox(height: 14),
-            const Text(
-                'Materials Included: foundation (concrete rebar), lumber package, '
-                'all frame materials and hardware, roofing materials, drywall '
-                'materials, insulation, plumbing rough in, electrical rough in, '
-                'windows, patio door'),
-          ],
-        ),
-        DocSection(
-          mobile: m,
-          title: 'Other items "NOT" included (can be added)',
-          amount: '\$0.00',
-          topMargin: 22,
-          body: const [
-            Text('Daikin Mini Splits x 3 units - \$16,900\n'
-                'Flooring allowance (customer selection)\n'
-                'Interior paint\n'
-                'Cabinets & countertops'),
-          ],
-        ),
+        ...invoice.allLineItems.map((item) => DocSection(
+              mobile: m,
+              title: item.description,
+              amount: Formatters.currency(item.lineTotal),
+              body: item.notes != null ? [Text(item.notes!)] : [],
+            )),
+        if (invoice.allLineItems.isEmpty)
+          DocSection(
+            mobile: m,
+            title: 'No line items',
+            amount: Formatters.currency(invoice.total),
+            body: const [],
+          ),
       ],
     );
   }
 
-  Widget _pageTwo() {
+  Widget _pageTwo(Invoice invoice) {
     final m = _mobileMode;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -253,44 +418,53 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             child: Column(
               children: [
                 DocTotalRow(
-                    mobile: m, label: 'Subtotal', value: '\$163,200.23'),
-                DocTotalRow(
                     mobile: m,
-                    label: 'Deposit received',
-                    value: '-\$81,600.11'),
+                    label: 'Subtotal',
+                    value: Formatters.currency(invoice.subtotal)),
+                if (invoice.markupValue != null)
+                  DocTotalRow(
+                      mobile: m,
+                      label: 'Markup',
+                      value: Formatters.currency(invoice.markupValue!)),
+                if (invoice.discountValue != null)
+                  DocTotalRow(
+                      mobile: m,
+                      label: 'Discount',
+                      value: '-${Formatters.currency(invoice.discountValue!)}'),
+                if (invoice.taxRate != null)
+                  DocTotalRow(
+                      mobile: m,
+                      label: invoice.taxName ?? 'Tax',
+                      value: '${invoice.taxRate!.toStringAsFixed(2)}%'),
                 DocTotalRow(
                     mobile: m,
                     label: 'Total',
-                    value: '\$163,200.23',
+                    value: Formatters.currency(invoice.total),
                     underlined: true),
+                if (invoice.depositValue != null && invoice.depositValue! > 0)
+                  DocTotalRow(
+                      mobile: m,
+                      label: 'Deposit received',
+                      value:
+                          '-${Formatters.currency(invoice.depositValue!)}'),
                 DocTotalRow(
                     mobile: m,
                     label: 'Balance due',
-                    value: '\$81,600.12',
+                    value: Formatters.currency(invoice.total),
                     boldValue: true),
               ],
             ),
           ),
         ),
-        DocTermsTitle('Payment schedule', mobile: m, topMargin: 44),
-        DocParagraph(
-          mobile: m,
-          'A 50% deposit was collected at project start. The remaining balance '
-          'of \$81,600.12 is due upon receipt of this invoice. Accepted methods: '
-          'card, bank transfer, check, and cash. Tap "Tap to pay" or "Payments" '
-          'above to collect on site.',
-        ),
-        DocTermsTitle('Late payment', mobile: m),
-        DocParagraph(
-          mobile: m,
-          'Balances unpaid 15 days past the due date may accrue a service charge '
-          'of 1.5% per month on the outstanding amount, as permitted by state law.',
-        ),
+        if (invoice.notes?.isNotEmpty == true) ...[
+          DocTermsTitle('Notes', mobile: m, topMargin: 44),
+          DocParagraph(invoice.notes!, mobile: m),
+        ],
       ],
     );
   }
 
-  Widget _pageThree() {
+  Widget _pageThree(Invoice invoice) {
     final m = _mobileMode;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,32 +472,40 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
       children: [
         DocTermsTitle('Remittance', mobile: m, topMargin: 0),
         DocParagraph(
+          'Please make payment to ${invoice.proName ?? 'the company'}. '
+          'Include the invoice number (#${invoice.number}) with any check '
+          'or transfer so we can apply it correctly.',
           mobile: m,
-          'Please make payment to Serden Group LLC. Include the invoice number '
-          '(#96) with any check or transfer so we can apply it correctly.',
         ),
         const SizedBox(height: 18),
         Column(
           children: [
-            DocTotalRow(mobile: m, label: 'Invoice #', value: '96'),
-            DocTotalRow(mobile: m, label: 'Bill to', value: 'Praveen Kumar'),
+            DocTotalRow(
+                mobile: m,
+                label: 'Invoice #',
+                value: invoice.number.toString()),
+            DocTotalRow(
+                mobile: m,
+                label: 'Bill to',
+                value: invoice.clientName ?? ''),
             DocTotalRow(
                 mobile: m,
                 label: 'Amount due',
-                value: '\$81,600.12',
+                value: Formatters.currency(invoice.total),
                 underlined: true),
             DocTotalRow(
                 mobile: m,
                 label: 'Due date',
-                value: 'Upon receipt',
+                value: invoice.dueDate != null
+                    ? Formatters.dateShort(invoice.dueDate!)
+                    : 'Upon receipt',
                 boldValue: true),
           ],
         ),
         const SizedBox(height: 44),
         DocParagraph(
+          'Thank you for your business.',
           mobile: m,
-          'Thank you for your business. Serden Group LLC is insured, licensed, '
-          'and bonded — LICENSE # SERDEGL826PD.',
         ),
       ],
     );

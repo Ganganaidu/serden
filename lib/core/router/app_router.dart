@@ -19,6 +19,7 @@ import '../../features/estimates/models/estimate_model.dart';
 import '../../features/estimates/screens/estimate_detail_screen.dart';
 import '../../features/estimates/screens/estimate_list_screen.dart';
 import '../../features/estimates/screens/new_estimate_screen.dart';
+import '../../features/invoices/cubit/invoice_detail_cubit.dart';
 import '../../features/invoices/screens/invoice_detail_screen.dart';
 import '../../features/invoices/screens/invoice_list_screen.dart';
 import '../../features/invoices/screens/new_invoice_screen.dart';
@@ -199,13 +200,19 @@ class AppRouter {
                     ),
                     GoRoute(
                       path: ':id',
-                      builder: (_, state) => InvoiceDetailScreen(
-                          id: state.pathParameters['id']!),
+                      builder: (_, state) => BlocProvider<InvoiceDetailCubit>(
+                        create: (_) => Injection.createInvoiceDetailCubit(),
+                        child: InvoiceDetailScreen(
+                            id: state.pathParameters['id']!),
+                      ),
                       routes: [
                         GoRoute(
                           path: 'record-payment',
-                          builder: (_, state) => RecordPaymentScreen(
-                              invoiceId: state.pathParameters['id']!),
+                          builder: (_, state) => BlocProvider<InvoiceDetailCubit>(
+                            create: (_) => Injection.createInvoiceDetailCubit(),
+                            child: RecordPaymentScreen(
+                                invoiceId: state.pathParameters['id']!),
+                          ),
                         ),
                       ],
                     ),
