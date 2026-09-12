@@ -8,6 +8,7 @@ import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/contact_launcher.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/avatar_widget.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../cubit/client_detail_cubit.dart';
@@ -80,7 +81,7 @@ class _ClientDetailScreenState extends State<ClientDetailScreen> {
                 child: isLoading && client == null
                     ? const Center(child: CircularProgressIndicator())
                     : errorMessage != null && client == null
-                        ? _ErrorBody(
+                        ? AppErrorWidget(
                             message: errorMessage,
                             onRetry: () {
                               final clientId = int.tryParse(widget.id) ?? 0;
@@ -463,39 +464,6 @@ class _Body extends StatelessWidget {
   }
 }
 
-// ─── Error body ───────────────────────────────────────────────────────────────
-
-class _ErrorBody extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorBody({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off_outlined,
-                size: 48, color: AppColors.inkFaint),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style:
-                  AppTextStyles.bodyMedium.copyWith(color: AppColors.inkSoft),
-            ),
-            const SizedBox(height: 20),
-            TextButton(onPressed: onRetry, child: const Text('Try again')),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Reusable sub-widgets ─────────────────────────────────────────────────────
 

@@ -6,6 +6,7 @@ import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_fab.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
@@ -185,8 +186,8 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
                   child: isLoading && estimates.isEmpty
                       ? const Center(child: CircularProgressIndicator())
                       : errorMessage != null && estimates.isEmpty
-                          ? _ErrorState(
-                              message: errorMessage, onRetry: _refresh)
+                          ? AppErrorWidget(
+                              message: errorMessage, onRetry: _refresh, scrollable: true)
                           : _list(estimates),
                 ),
               ),
@@ -241,43 +242,6 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorState({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      children: [
-        const SizedBox(height: 80),
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.cloud_off_outlined,
-                    size: 48, color: AppColors.inkFaint),
-                const SizedBox(height: 16),
-                Text(
-                  message,
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.bodyMedium
-                      .copyWith(color: AppColors.inkSoft),
-                ),
-                const SizedBox(height: 20),
-                TextButton(onPressed: onRetry, child: const Text('Try again')),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
 
 class _MonthHeader extends StatelessWidget {
   final String label;

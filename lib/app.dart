@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/widgets/app_error_screen.dart';
 import 'features/auth/bloc/auth_bloc.dart';
 import 'features/clients/bloc/client_bloc.dart';
 import 'features/estimates/bloc/estimate_bloc.dart';
@@ -86,9 +87,43 @@ class _SerdenAppState extends State<SerdenApp> {
             theme: AppTheme.lightTheme,
             routerConfig: router,
             debugShowCheckedModeBanner: false,
+            builder: (context, child) {
+              return _ErrorBoundary(child: child ?? const SizedBox.shrink());
+            },
           );
         },
       ),
     );
+  }
+}
+
+/// Catches errors thrown during widget builds and swaps the subtree for
+/// [AppErrorScreen] rather than crashing the whole app.
+class _ErrorBoundary extends StatefulWidget {
+  final Widget child;
+  const _ErrorBoundary({required this.child});
+
+  @override
+  State<_ErrorBoundary> createState() => _ErrorBoundaryState();
+}
+
+class _ErrorBoundaryState extends State<_ErrorBoundary> {
+  Object? _error;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reset error whenever the child subtree changes so a retry can succeed.
+    _error = null;
+  }
+
+  void _clearError() => setState(() => _error = null);
+
+  @override
+  Widget build(BuildContext context) {
+    if (_error != null) {
+      return AppErrorScreen(onRetry: _clearError);
+    }
+    return widget.child;
   }
 }

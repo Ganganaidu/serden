@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_fab.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
@@ -196,7 +197,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                   child: isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : state is LeadsError
-                          ? _ErrorView(
+                          ? AppErrorWidget(
                               message: state.message,
                               onRetry: () {
                                 final authState =
@@ -270,35 +271,6 @@ class _LeadsScreenState extends State<LeadsScreen>
 
 // ─── Error view ──────────────────────────────────────────────────────────────
 
-class _ErrorView extends StatelessWidget {
-  final String message;
-  final VoidCallback onRetry;
-
-  const _ErrorView({required this.message, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.cloud_off_outlined,
-                size: 48, color: AppColors.inkFaint),
-            const SizedBox(height: 16),
-            Text(message,
-                textAlign: TextAlign.center,
-                style:
-                    AppTextStyles.bodyMedium.copyWith(color: AppColors.inkSoft)),
-            const SizedBox(height: 20),
-            TextButton(onPressed: onRetry, child: const Text('Try again')),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Lead row ────────────────────────────────────────────────────────────────
 

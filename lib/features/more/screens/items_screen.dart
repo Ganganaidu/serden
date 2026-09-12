@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_fab.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
@@ -242,29 +243,12 @@ class _ItemsScreenState extends State<ItemsScreen>
     }
 
     if (state is ItemsError) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                state.message,
-                textAlign: TextAlign.center,
-                style: AppTextStyles.bodyMedium
-                    .copyWith(color: AppColors.inkSoft),
-              ),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  final proId = _proId;
-                  if (proId != null) context.read<ItemsCubit>().fetch(proId);
-                },
-                child: const Text('Retry'),
-              ),
-            ],
-          ),
-        ),
+      return AppErrorWidget(
+        message: state.message,
+        onRetry: () {
+          final proId = _proId;
+          if (proId != null) context.read<ItemsCubit>().fetch(proId);
+        },
       );
     }
 
