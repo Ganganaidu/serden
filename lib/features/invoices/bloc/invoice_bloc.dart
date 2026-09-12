@@ -22,7 +22,10 @@ class InvoiceBloc extends Bloc<InvoiceEvent, InvoicesState> {
 
   Future<void> _onFetch(
       InvoicesFetchRequested event, Emitter<InvoicesState> emit) async {
-    emit(const InvoicesLoading());
+    // Only show full loading spinner on the very first fetch.
+    // On subsequent refreshes, keep displaying the existing list while
+    // the API call runs so the UI doesn't flash.
+    if (state is InvoicesInitial) emit(const InvoicesLoading());
     final result = await _repository.fetchInvoices(
       event.proId,
       searchTerm: event.searchTerm,

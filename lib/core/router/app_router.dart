@@ -51,6 +51,7 @@ import '../../features/taxes/screens/taxes_screen.dart';
 import '../widgets/main_shell.dart';
 
 abstract class AppRoutes {
+  static const splash = '/';
   static const onboarding = '/onboarding';
   static const signIn = '/sign-in';
   static const signUp = '/sign-up';
@@ -96,24 +97,37 @@ class AppRouter {
     final authBloc = context.read<AuthBloc>();
 
     return GoRouter(
-      initialLocation: AppRoutes.estimates,
+      initialLocation: AppRoutes.splash,
       redirect: (context, state) {
         final authState = authBloc.state;
-        final isAuthRoute = state.matchedLocation == AppRoutes.signIn ||
-            state.matchedLocation == AppRoutes.signUp ||
-            state.matchedLocation == AppRoutes.onboarding ||
-            state.matchedLocation == AppRoutes.emailVerification;
+        final loc = state.matchedLocation;
+        final isAuthRoute = loc == AppRoutes.signIn ||
+            loc == AppRoutes.signUp ||
+            loc == AppRoutes.onboarding ||
+            loc == AppRoutes.emailVerification;
+
+        // While auth status is being resolved, show the splash screen.
+        if (authState is AuthInitial || authState is AuthLoading) {
+          return loc == AppRoutes.splash ? null : AppRoutes.splash;
+        }
 
         if (authState is AuthUnauthenticated && !isAuthRoute) {
           return OnboardingPrefs.seen ? AppRoutes.signIn : AppRoutes.onboarding;
         }
-        if (authState is AuthAuthenticated && isAuthRoute) {
+        if (authState is AuthAuthenticated &&
+            (isAuthRoute || loc == AppRoutes.splash)) {
           return AppRoutes.estimates;
         }
         return null;
       },
       refreshListenable: GoRouterRefreshStream(authBloc.stream),
       routes: [
+        // Splash / auth-check screen shown while AuthInitial/AuthLoading
+        GoRoute(
+          path: AppRoutes.splash,
+          builder: (_, __) => const _SplashScreen(),
+        ),
+
         // Auth routes (full-screen, no shell)
         GoRoute(
           path: AppRoutes.onboarding,
@@ -492,6 +506,24 @@ class _AnimatedBranchContainerState extends State<AnimatedBranchContainer>
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Shown while [AuthInitial] / [AuthLoading] — a blank branded screen so no
+/// protected content is ever visible before the auth check resolves.
+class _SplashScreen extends StatelessWidget {
+  const _SplashScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Color(0xFF153A2B),
+      body: Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE2793A)),
+        ),
+      ),
     );
   }
 }

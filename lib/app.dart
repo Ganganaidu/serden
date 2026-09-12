@@ -37,7 +37,7 @@ class _SerdenAppState extends State<SerdenApp> {
   @override
   void initState() {
     super.initState();
-    _authBloc = Injection.createAuthBloc();
+    _authBloc = Injection.createAuthBloc()..add(const AuthCheckRequested());
     _clientBloc = Injection.createClientBloc();
     _estimateBloc = Injection.createEstimateBloc();
     _invoiceBloc = Injection.createInvoiceBloc();

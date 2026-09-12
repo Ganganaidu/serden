@@ -22,7 +22,7 @@ class EstimateBloc extends Bloc<EstimateEvent, EstimatesState> {
 
   Future<void> _onFetch(
       EstimatesFetchRequested event, Emitter<EstimatesState> emit) async {
-    emit(const EstimatesLoading());
+    if (state is EstimatesInitial) emit(const EstimatesLoading());
     final result = await _repository.fetchEstimates(
       event.proId,
       searchTerm: event.searchTerm,

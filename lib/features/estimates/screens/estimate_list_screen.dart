@@ -40,13 +40,13 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
   void initState() {
     super.initState();
     _goRouter = GoRouter.of(context);
-    _goRouter.routeInformationProvider.addListener(_onRouteChanged);
+    _goRouter.routerDelegate.addListener(_onRouteChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchOnce());
   }
 
   @override
   void dispose() {
-    _goRouter.routeInformationProvider.removeListener(_onRouteChanged);
+    _goRouter.routerDelegate.removeListener(_onRouteChanged);
     super.dispose();
   }
 
@@ -230,7 +230,11 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
       }
       children.add(_EstimateRow(
         estimate: e,
-        onTap: () => context.push('/estimates/${e.id}'),
+        onTap: () {
+          context.push('/estimates/${e.id}').then((_) {
+            if (mounted) _refresh();
+          });
+        },
       ));
     }
 

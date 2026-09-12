@@ -40,13 +40,13 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
   void initState() {
     super.initState();
     _goRouter = GoRouter.of(context);
-    _goRouter.routeInformationProvider.addListener(_onRouteChanged);
+    _goRouter.routerDelegate.addListener(_onRouteChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchOnce());
   }
 
   @override
   void dispose() {
-    _goRouter.routeInformationProvider.removeListener(_onRouteChanged);
+    _goRouter.routerDelegate.removeListener(_onRouteChanged);
     super.dispose();
   }
 
@@ -149,58 +149,66 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
             .fold<double>(0, (sum, i) => sum + i.balance);
 
         return Scaffold(
-          body: RefreshIndicator(
-            onRefresh: _handleRefresh,
-            color: AppColors.primary,
-            child: Column(
-              children: [
-                AppHeader(
-                  title: 'Invoices',
-                  subtitleSpans: [
-                    TextSpan(
-                      text: Formatters.currencyShort(outstanding),
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700),
-                    ),
-                    const TextSpan(text: ' outstanding'),
-                    if (overdueAmt > 0) ...[
-                      const TextSpan(text: ' · '),
-                      TextSpan(
-                        text:
-                            '${Formatters.currencyShort(overdueAmt)} overdue',
-                        style: const TextStyle(
-                          color: AppColors.overdueOnHeader,
-                          fontWeight: FontWeight.w700,
+          body: Stack(
+            children: [
+              RefreshIndicator(
+                onRefresh: _handleRefresh,
+                color: AppColors.primary,
+                child: Column(
+                  children: [
+                    AppHeader(
+                      title: 'Invoices',
+                      subtitleSpans: [
+                        TextSpan(
+                          text: Formatters.currencyShort(outstanding),
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.w700),
                         ),
+                        const TextSpan(text: ' outstanding'),
+                        if (overdueAmt > 0) ...[
+                          const TextSpan(text: ' · '),
+                          TextSpan(
+                            text:
+                                '${Formatters.currencyShort(overdueAmt)} overdue',
+                            style: const TextStyle(
+                              color: AppColors.overdueOnHeader,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ],
+                      actions: [const NotificationBellButton()],
+                      bottom: HeaderSearchBar(
+                        hint: 'Search client, number, or amount',
+                        onChanged: (v) => setState(() => _search = v),
                       ),
-                    ],
+                    ),
+                    PillTabs(
+                      tabs: [
+                        PillTab('Active',
+                            count: _count(invoices, InvoiceTab.active)),
+                        PillTab('Overdue',
+                            count: _count(invoices, InvoiceTab.overdue),
+                            activeColor: AppColors.redDeep),
+                        PillTab('Paid',
+                            count: _count(invoices, InvoiceTab.paid)),
+                      ],
+                      selectedIndex: _tabIndex,
+                      onChanged: (i) => setState(() => _tabIndex = i),
+                    ),
+                    Expanded(child: _list(invoices)),
                   ],
-                  actions: [const NotificationBellButton()],
-                  bottom: HeaderSearchBar(
-                    hint: 'Search client, number, or amount',
-                    onChanged: (v) => setState(() => _search = v),
-                  ),
                 ),
-                PillTabs(
-                  tabs: [
-                    PillTab('Active',
-                        count: _count(invoices, InvoiceTab.active)),
-                    PillTab('Overdue',
-                        count: _count(invoices, InvoiceTab.overdue),
-                        activeColor: AppColors.redDeep),
-                    PillTab('Paid',
-                        count: _count(invoices, InvoiceTab.paid)),
-                  ],
-                  selectedIndex: _tabIndex,
-                  onChanged: (i) => setState(() => _tabIndex = i),
+              ),
+              Positioned(
+                right: 16,
+                bottom: 24,
+                child: AppFab(
+                  label: 'New invoice',
+                  onPressed: () => context.push(AppRoutes.newInvoice),
                 ),
-                Expanded(child: _list(invoices)),
-              ],
-            ),
-          ),
-          floatingActionButton: AppFab(
-            label: 'New invoice',
-            onPressed: () => context.push(AppRoutes.newInvoice),
+              ),
+            ],
           ),
         );
       },
@@ -239,7 +247,11 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
       }
       children.add(_InvoiceRow(
         invoice: invoice,
-        onTap: () => context.push('/invoices/${invoice.id}'),
+        onTap: () {
+          context.push('/invoices/${invoice.id}').then((_) {
+            if (mounted) _refresh();
+          });
+        },
       ));
     }
 
