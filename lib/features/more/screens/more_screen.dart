@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
@@ -10,8 +11,28 @@ import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../auth/bloc/auth_bloc.dart';
 
-class MoreScreen extends StatelessWidget {
+class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
+
+  @override
+  State<MoreScreen> createState() => _MoreScreenState();
+}
+
+class _MoreScreenState extends State<MoreScreen> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _version = info.version);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +110,7 @@ class MoreScreen extends StatelessWidget {
                         icon: Icons.info_outline,
                         grayIcon: true,
                         title: 'About this app',
-                        value: 'v4.2.1',
+                        value: _version.isNotEmpty ? 'v$_version' : null,
                         showDivider: false,
                         onTap: () => context.push(AppRoutes.about),
                       ),

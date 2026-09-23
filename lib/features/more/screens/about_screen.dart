@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -8,8 +9,28 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 
-class AboutScreen extends StatelessWidget {
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
+
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
+  String _version = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() => _version = info.version);
+    }
+  }
 
   Future<void> _openUrl(String url) async {
     final uri = Uri.parse(url);
@@ -64,7 +85,10 @@ class AboutScreen extends StatelessWidget {
                 AppCard(
                   child: Column(
                     children: [
-                      const _AboutRow(label: 'Version', value: '4.2.1'),
+                      _AboutRow(
+                        label: 'Version',
+                        value: _version.isNotEmpty ? _version : null,
+                      ),
                       _AboutRow(
                         label: 'Terms of Service',
                         chevron: true,

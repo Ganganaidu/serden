@@ -159,30 +159,35 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                                       .copyWith(fontSize: 15.5),
                                 ),
                                 const SizedBox(height: 5),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 9, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.greenTint,
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: const [
-                                      Icon(Icons.verified_user_outlined,
-                                          size: 12,
-                                          color: AppColors.greenDeep),
-                                      SizedBox(width: 5),
-                                      Text(
-                                        'Serdefied Pro',
-                                        style: TextStyle(
-                                          fontFamily: AppTextStyles.fontFamily,
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.greenDeep,
+                                FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 9, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.greenTint,
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(Icons.verified_user_outlined,
+                                            size: 12,
+                                            color: AppColors.greenDeep),
+                                        SizedBox(width: 5),
+                                        Text(
+                                          'Serdefied Pro',
+                                          style: TextStyle(
+                                            fontFamily:
+                                                AppTextStyles.fontFamily,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: AppColors.greenDeep,
+                                          ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ],
