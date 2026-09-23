@@ -1,7 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
@@ -23,13 +25,25 @@ class AccountViewScreen extends StatefulWidget {
 
 class _AccountViewScreenState extends State<AccountViewScreen> {
   bool _copied = false;
+  String _versionLabel = '';
 
   @override
   void initState() {
     super.initState();
+    _loadVersion();
     final authState = context.read<AuthBloc>().state;
     if (authState is AuthAuthenticated) {
       context.read<AccountViewCubit>().load(authState.user.userId);
+    }
+  }
+
+  Future<void> _loadVersion() async {
+    final info = await PackageInfo.fromPlatform();
+    final platform = defaultTargetPlatform == TargetPlatform.iOS ? 'iOS' : 'Android';
+    if (mounted) {
+      setState(() {
+        _versionLabel = 'Serden for $platform · v${info.version}';
+      });
     }
   }
 
@@ -162,19 +176,20 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
                         icon: const Icon(Icons.logout, size: 16),
                         label: const Text('Sign out'),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 14),
-                        child: Text(
-                          'Serden for iOS · v4.2.1',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w500,
-                            color: AppColors.inkFaint,
+                      if (_versionLabel.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 14),
+                          child: Text(
+                            _versionLabel,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontFamily: AppTextStyles.fontFamily,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: AppColors.inkFaint,
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   );
                 },

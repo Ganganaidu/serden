@@ -1,7 +1,7 @@
 name: Serden
 description: Serden — contractor business management app.
 publish_to: 'none'
-version: 1.0.6+6
+version: 1.0.7+7
 
 environment:
   sdk: ^3.9.2
@@ -37,6 +37,9 @@ dependencies:
 
   # Device contacts picker
   flutter_contacts: ^1.1.9
+
+  # App metadata
+  package_info_plus: ^8.1.3
 
   # Utils
   intl: ^0.20.0
