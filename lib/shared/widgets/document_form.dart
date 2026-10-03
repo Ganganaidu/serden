@@ -391,7 +391,6 @@ class _DocumentFormState extends State<DocumentForm> {
           ),
           _InnerToggleRow(
             title: 'Group items into sections',
-            pill: const PlanPill.elite(),
             subtitle: 'Organize big jobs into labeled phases.',
             value: _groupSections,
             onChanged: (v) => setState(() => _groupSections = v),
@@ -970,7 +969,6 @@ class _DocumentFormState extends State<DocumentForm> {
             id: 'attachments',
             icon: Icons.attachment,
             title: 'Photos and attachments',
-            pill: const PlanPill.pro(),
             subtitle: _attachmentsSummary,
             open: _openBlocks.contains('attachments'),
             onToggle: _toggleBlock,
@@ -1000,7 +998,6 @@ class _DocumentFormState extends State<DocumentForm> {
               children: [
                 _InnerValueRow(
                   label: 'Contract',
-                  pill: const PlanPill.pro(),
                   value: 'Generic contract',
                   onTap: () {},
                 ),
@@ -1033,7 +1030,6 @@ class _DocumentFormState extends State<DocumentForm> {
                 ),
                 _NoteEntryRow(
                   label: 'Private notes',
-                  pill: const PlanPill.pro(),
                   text: _privateNotes,
                   onTap: () => _pickNotes(isPrivate: true),
                 ),
@@ -1672,21 +1668,11 @@ class _DocumentFormState extends State<DocumentForm> {
 
 // ---- Small pieces ------------------------------------------------------
 
-/// PRO / ELITE / NEW plan pill shown next to gated features.
+/// NEW plan pill shown next to new features.
 class PlanPill extends StatelessWidget {
   final String label;
   final Color background;
   final Color foreground;
-
-  const PlanPill.pro({super.key})
-      : label = 'PRO',
-        background = AppColors.greenTint,
-        foreground = AppColors.greenDeep;
-
-  const PlanPill.elite({super.key})
-      : label = 'ELITE',
-        background = AppColors.orangeTint,
-        foreground = AppColors.orangeDeep;
 
   const PlanPill.newFeature({super.key})
       : label = 'NEW',
@@ -1902,7 +1888,6 @@ class _ExpandableBlock extends StatelessWidget {
   final bool open;
   final bool warn;
   final bool showDivider;
-  final PlanPill? pill;
   final ValueChanged<String> onToggle;
 
   const _ExpandableBlock({
@@ -1915,7 +1900,6 @@ class _ExpandableBlock extends StatelessWidget {
     required this.onToggle,
     this.warn = false,
     this.showDivider = true,
-    this.pill,
   });
 
   @override
@@ -1961,7 +1945,6 @@ class _ExpandableBlock extends StatelessWidget {
                                   style: AppTextStyles.rowTitle
                                       .copyWith(fontSize: 14)),
                             ),
-                            if (pill != null) pill!,
                           ],
                         ),
                         const SizedBox(height: 2),
@@ -2067,14 +2050,12 @@ class _InnerToggleRow extends StatelessWidget {
 class _InnerValueRow extends StatelessWidget {
   final String label;
   final String value;
-  final PlanPill? pill;
   final VoidCallback onTap;
 
   const _InnerValueRow({
     required this.label,
     required this.value,
     required this.onTap,
-    this.pill,
   });
 
   @override
@@ -2096,7 +2077,6 @@ class _InnerValueRow extends StatelessWidget {
                         style: AppTextStyles.labelMedium
                             .copyWith(fontSize: 13.5)),
                   ),
-                  if (pill != null) pill!,
                 ],
               ),
             ),
@@ -2122,7 +2102,6 @@ class _InnerValueRow extends StatelessWidget {
 /// needed) instead of just a generic "Add"/value label.
 class _NoteEntryRow extends StatelessWidget {
   final String label;
-  final PlanPill? pill;
   final String? text;
   final VoidCallback onTap;
 
@@ -2130,7 +2109,6 @@ class _NoteEntryRow extends StatelessWidget {
     required this.label,
     required this.text,
     required this.onTap,
-    this.pill,
   });
 
   @override
@@ -2156,7 +2134,6 @@ class _NoteEntryRow extends StatelessWidget {
                             style: AppTextStyles.labelMedium
                                 .copyWith(fontSize: 13.5)),
                       ),
-                      if (pill != null) pill!,
                     ],
                   ),
                 ),

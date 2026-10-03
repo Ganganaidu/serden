@@ -354,11 +354,6 @@ class _AddClientScreenState extends State<AddClientScreen> {
                                 size: 24, color: AppColors.inkFaint),
                           )
                         : AvatarWidget(name: _name.text.trim(), size: 60),
-                    const SizedBox(width: 14),
-                    TextButton(
-                      onPressed: () {},
-                      child: const Text('Add photo'),
-                    ),
                   ],
                 ),
                 const SectionHeader(
