@@ -19,6 +19,7 @@ class SignUpScreen extends StatefulWidget {
 
 class _SignUpScreenState extends State<SignUpScreen> {
   final _email = TextEditingController();
+  final _username = TextEditingController();
   final _password = TextEditingController();
   final _confirmPassword = TextEditingController();
   final _firstName = TextEditingController();
@@ -28,6 +29,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   String? _firstNameError;
   String? _lastNameError;
   String? _emailError;
+  String? _usernameError;
   String? _passwordError;
   String? _confirmError;
 
@@ -72,6 +74,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
     _email.addListener(() {
       if (_emailError != null) setState(() => _emailError = null);
     });
+    _username.addListener(() {
+      if (_usernameError != null && _username.text.trim().isNotEmpty) {
+        setState(() => _usernameError = null);
+      }
+    });
     _password.addListener(_onPasswordChanged);
     _confirmPassword.addListener(_onConfirmChanged);
   }
@@ -102,6 +109,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   void dispose() {
     _email.dispose();
+    _username.dispose();
     _password.dispose();
     _confirmPassword.dispose();
     _firstName.dispose();
@@ -113,6 +121,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final firstNameError = _firstName.text.trim().isEmpty ? 'Required.' : null;
     final lastNameError = _lastName.text.trim().isEmpty ? 'Required.' : null;
     final emailError = _checkEmail(_email.text.trim());
+    final usernameError = _username.text.trim().isEmpty ? 'Required.' : null;
     final passError = _checkPassword(_password.text);
     final confirmError = _confirmPassword.text.isEmpty
         ? 'Required.'
@@ -123,12 +132,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (firstNameError != null ||
         lastNameError != null ||
         emailError != null ||
+        usernameError != null ||
         passError != null ||
         confirmError != null) {
       setState(() {
         _firstNameError = firstNameError;
         _lastNameError = lastNameError;
         _emailError = emailError;
+        _usernameError = usernameError;
         _passwordError = passError;
         _confirmError = confirmError;
       });
@@ -148,6 +159,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     context.read<AuthBloc>().add(
           AuthSignUpRequested(
             email: _email.text.trim(),
+            username: _username.text.trim(),
             password: _password.text,
             confirmPassword: _confirmPassword.text,
             firstName: _firstName.text.trim(),
@@ -179,7 +191,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               Expanded(
                 child: AuthField(
                   label: 'First name',
-                  hint: 'Kevin',
+                  hint: 'Enter first name',
                   controller: _firstName,
                   keyboardType: TextInputType.name,
                   errorText: _firstNameError,
@@ -189,7 +201,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
               Expanded(
                 child: AuthField(
                   label: 'Last name',
-                  hint: 'Smith',
+                  hint: 'Enter last name',
                   controller: _lastName,
                   keyboardType: TextInputType.name,
                   errorText: _lastNameError,
@@ -198,11 +210,17 @@ class _SignUpScreenState extends State<SignUpScreen> {
             ],
           ),
           AuthField(
-            label: 'User name',
-            hint: 'you@yourbusiness.com',
+            label: 'Email address',
+            hint: 'you@example.com',
             controller: _email,
             keyboardType: TextInputType.emailAddress,
             errorText: _emailError,
+          ),
+          AuthField(
+            label: 'User name',
+            hint: 'Choose a username',
+            controller: _username,
+            errorText: _usernameError,
           ),
           AuthField(
             label: 'Password',

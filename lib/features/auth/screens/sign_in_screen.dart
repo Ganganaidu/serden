@@ -79,7 +79,7 @@ class _SignInScreenState extends State<SignInScreen> {
         children: [
           AuthField(
             label: 'User name',
-            hint: 'you@yourbusiness.com',
+            hint: 'Your username or email',
             controller: _email,
             keyboardType: TextInputType.emailAddress,
             errorText: _emailError,

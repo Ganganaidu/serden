@@ -14,6 +14,7 @@ abstract class AuthRepository {
   Future<Either<Failure, UserModel>> signIn(String email, String password);
   Future<Either<Failure, void>> signUp({
     required String email,
+    required String username,
     required String password,
     required String confirmPassword,
     required String firstName,
@@ -151,13 +152,14 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<Either<Failure, void>> signUp({
     required String email,
+    required String username,
     required String password,
     required String confirmPassword,
     required String firstName,
     required String lastName,
     required String turnstileToken,
   }) async {
-    AppLogger.auth('signUp: attempting for $email');
+    AppLogger.auth('signUp: attempting for $email (username=$username)');
     if (_useMock) {
       await Future.delayed(const Duration(milliseconds: 800));
       AppLogger.auth('signUp: mock success for $email');
@@ -167,7 +169,7 @@ class AuthRepositoryImpl implements AuthRepository {
       await _apiClient.post(
         '/Users/register',
         data: {
-          'username': email,
+          'username': username,
           'email': email,
           'password': password,
           'confirmPassword': confirmPassword,

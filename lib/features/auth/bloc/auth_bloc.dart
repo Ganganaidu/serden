@@ -49,6 +49,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
     final result = await _repository.signUp(
       email: event.email,
+      username: event.username,
       password: event.password,
       confirmPassword: event.confirmPassword,
       firstName: event.firstName,

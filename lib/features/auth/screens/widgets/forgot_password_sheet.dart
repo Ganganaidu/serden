@@ -147,7 +147,7 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
               autofocus: (widget.initialEmail ?? '').isEmpty,
               style: AppTextStyles.bodyLarge,
               decoration: const InputDecoration(
-                hintText: 'you@yourbusiness.com',
+                hintText: 'Your Username',
               ),
             ),
             if (_error != null) ...[
