@@ -72,8 +72,10 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
       _error = null;
     });
 
-    final result = await Injection.authRepository
-        .forgotPassword(email, turnstileToken: token);
+    final result = await Injection.authRepository.forgotPassword(
+      email,
+      turnstileToken: token,
+    );
     if (!mounted) return;
     result.fold(
       (failure) => setState(() {
@@ -89,7 +91,8 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.of(context).viewInsets.bottom +
+    final bottom =
+        MediaQuery.of(context).viewInsets.bottom +
         MediaQuery.of(context).padding.bottom;
 
     return Container(
@@ -134,8 +137,10 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
             _sent
                 ? 'Check your inbox — we sent a reset link to ${_email.text.trim()}.'
                 : 'Enter the email linked to your account and we\'ll send you a reset link.',
-            style: AppTextStyles.bodyMedium
-                .copyWith(color: AppColors.inkSoft, height: 1.4),
+            style: AppTextStyles.bodyMedium.copyWith(
+              color: AppColors.inkSoft,
+              height: 1.4,
+            ),
           ),
           if (!_sent) ...[
             const SizedBox(height: 24),
@@ -146,9 +151,7 @@ class _ForgotPasswordSheetState extends State<_ForgotPasswordSheet> {
               keyboardType: TextInputType.emailAddress,
               autofocus: (widget.initialEmail ?? '').isEmpty,
               style: AppTextStyles.bodyLarge,
-              decoration: const InputDecoration(
-                hintText: 'Your Username',
-              ),
+              decoration: const InputDecoration(hintText: 'Your Username'),
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),

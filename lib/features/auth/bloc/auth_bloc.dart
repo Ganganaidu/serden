@@ -10,8 +10,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _repository;
 
   AuthBloc({required AuthRepository repository})
-      : _repository = repository,
-        super(const AuthInitial()) {
+    : _repository = repository,
+      super(const AuthInitial()) {
     on<AuthCheckRequested>(_onCheckRequested);
     on<AuthSignInRequested>(_onSignIn);
     on<AuthSignUpRequested>(_onSignUp);
@@ -19,7 +19,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   Future<void> _onCheckRequested(
-      AuthCheckRequested event, Emitter<AuthState> emit) async {
+    AuthCheckRequested event,
+    Emitter<AuthState> emit,
+  ) async {
     emit(const AuthLoading());
     final isAuth = await _repository.isAuthenticated();
     if (!isAuth) {
@@ -34,10 +36,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   Future<void> _onSignIn(
-      AuthSignInRequested event, Emitter<AuthState> emit) async {
+    AuthSignInRequested event,
+    Emitter<AuthState> emit,
+  ) async {
     emit(const AuthLoading());
-    final result =
-        await _repository.signIn(event.email, event.password);
+    final result = await _repository.signIn(event.email, event.password);
     result.fold(
       (failure) => emit(AuthFailure(failure.message)),
       (user) => emit(AuthAuthenticated(user)),
@@ -45,7 +48,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   Future<void> _onSignUp(
-      AuthSignUpRequested event, Emitter<AuthState> emit) async {
+    AuthSignUpRequested event,
+    Emitter<AuthState> emit,
+  ) async {
     emit(const AuthLoading());
     final result = await _repository.signUp(
       email: event.email,
@@ -63,7 +68,9 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   Future<void> _onSignOut(
-      AuthSignOutRequested event, Emitter<AuthState> emit) async {
+    AuthSignOutRequested event,
+    Emitter<AuthState> emit,
+  ) async {
     await _repository.signOut();
     emit(const AuthUnauthenticated());
   }

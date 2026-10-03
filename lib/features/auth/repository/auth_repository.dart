@@ -25,7 +25,9 @@ abstract class AuthRepository {
   Future<Either<Failure, UserModel>> getCurrentUser();
   Future<bool> isAuthenticated();
   Future<Either<Failure, void>> forgotPassword(
-      String email, {required String turnstileToken});
+    String email, {
+    required String turnstileToken,
+  });
   Future<Either<Failure, UserModel>> updateUser({
     required int userId,
     required String firstName,
@@ -48,18 +50,18 @@ class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl({
     required ApiClient apiClient,
     required SecureStorage storage,
-  })  : _apiClient = apiClient,
-        _storage = storage;
+  }) : _apiClient = apiClient,
+       _storage = storage;
 
   static UserModel _mockUser(String email) => const UserModel(
-        userId: 1,
-        proId: 1,
-        publicId: 'mock-user-1',
-        username: 'user@example.com',
-        email: 'user@example.com',
-        firstName: 'John',
-        lastName: 'Smith',
-      );
+    userId: 1,
+    proId: 1,
+    publicId: 'mock-user-1',
+    username: 'user@example.com',
+    email: 'user@example.com',
+    firstName: 'John',
+    lastName: 'Smith',
+  );
 
   Future<void> _persistSession(Map<String, dynamic> data) async {
     final accessToken = data['accessToken'] as String?;
@@ -113,7 +115,9 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<Either<Failure, UserModel>> signIn(
-      String email, String password) async {
+    String email,
+    String password,
+  ) async {
     AppLogger.auth('signIn: attempting for $email');
     if (_useMock) {
       await Future.delayed(const Duration(milliseconds: 800));
@@ -230,10 +234,11 @@ class AuthRepositoryImpl implements AuthRepository {
     final publicId = cachedMap['publicId'] as String?;
     if (publicId == null) return const Left(UnauthorizedFailure());
     try {
-      final response = await _apiClient
-          .get('/Users/publicid', queryParams: {'publicId': publicId});
-      final rawUser =
-          UserModel.fromJson(response.data as Map<String, dynamic>);
+      final response = await _apiClient.get(
+        '/Users/publicid',
+        queryParams: {'publicId': publicId},
+      );
+      final rawUser = UserModel.fromJson(response.data as Map<String, dynamic>);
       // Preserve proId from cache — it's not in the SerdenUser response.
       final cachedProId = cachedMap['proId'] as int?;
       final user = cachedProId != null
@@ -241,14 +246,16 @@ class AuthRepositoryImpl implements AuthRepository {
           : await _withProId(rawUser);
       await _storage.write(AppConstants.userKey, jsonEncode(user.toJson()));
       AppLogger.auth(
-          'getCurrentUser: valid — userId=${user.userId} proId=${user.proId}');
+        'getCurrentUser: valid — userId=${user.userId} proId=${user.proId}',
+      );
       return Right(user);
     } on UnauthorizedException {
       AppLogger.auth('getCurrentUser: refresh failed — unauthorized');
       return const Left(UnauthorizedFailure());
     } on ServerException catch (e) {
       AppLogger.auth(
-          'getCurrentUser: server failure (${e.statusCode}) — ${e.message}');
+        'getCurrentUser: server failure (${e.statusCode}) — ${e.message}',
+      );
       return Left(ServerFailure(e.message, statusCode: e.statusCode));
     } on NetworkException catch (e) {
       AppLogger.auth('getCurrentUser: network failure — ${e.message}');
@@ -279,8 +286,11 @@ class AuthRepositoryImpl implements AuthRepository {
       final base = cached != null
           ? UserModel.fromJson(jsonDecode(cached) as Map<String, dynamic>)
           : _mockUser(email);
-      final updated =
-          base.copyWith(firstName: firstName, lastName: lastName, email: email);
+      final updated = base.copyWith(
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+      );
       await _storage.write(AppConstants.userKey, jsonEncode(updated.toJson()));
       return Right(updated);
     }
@@ -297,8 +307,7 @@ class AuthRepositoryImpl implements AuthRepository {
       );
       // Refresh the user from the server to get the canonical state
       final response = await _apiClient.get('/Users/$userId');
-      final rawUser =
-          UserModel.fromJson(response.data as Map<String, dynamic>);
+      final rawUser = UserModel.fromJson(response.data as Map<String, dynamic>);
       final cached = await _storage.read(AppConstants.userKey);
       final cachedProId = cached != null
           ? (jsonDecode(cached) as Map<String, dynamic>)['proId'] as int?
@@ -358,7 +367,9 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<Either<Failure, void>> forgotPassword(
-      String email, {required String turnstileToken}) async {
+    String email, {
+    required String turnstileToken,
+  }) async {
     AppLogger.auth('forgotPassword: requesting reset for $email');
     if (_useMock) {
       await Future.delayed(const Duration(milliseconds: 800));

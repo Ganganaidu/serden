@@ -69,8 +69,7 @@ class AuthScaffold extends StatelessWidget {
                               ),
                               const SizedBox(height: 14),
                               const Padding(
-                                padding:
-                                    EdgeInsets.symmetric(horizontal: 48),
+                                padding: EdgeInsets.symmetric(horizontal: 48),
                                 child: Text(
                                   'Join the network homeowners trust to find local pros.',
                                   textAlign: TextAlign.center,
@@ -119,10 +118,7 @@ class _Sheet extends StatelessWidget {
       curve: Curves.easeOutCubic,
       builder: (context, offset, child) => Transform.translate(
         offset: Offset(0, offset),
-        child: Opacity(
-          opacity: 1 - offset / 24,
-          child: child,
-        ),
+        child: Opacity(opacity: 1 - offset / 24, child: child),
       ),
       child: Container(
         width: double.infinity,
@@ -151,8 +147,10 @@ class _Sheet extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: AppTextStyles.bodyMedium
-                    .copyWith(color: AppColors.inkSoft, height: 1.3),
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.inkSoft,
+                  height: 1.3,
+                ),
               ),
               const SizedBox(height: 22),
               ...children,
@@ -174,6 +172,7 @@ class AuthField extends StatelessWidget {
   final Widget? suffix;
   final String? helper;
   final String? errorText;
+  final FocusNode? focusNode;
 
   const AuthField({
     super.key,
@@ -185,6 +184,7 @@ class AuthField extends StatelessWidget {
     this.suffix,
     this.helper,
     this.errorText,
+    this.focusNode,
   });
 
   @override
@@ -198,6 +198,7 @@ class AuthField extends StatelessWidget {
           const SizedBox(height: 6),
           TextField(
             controller: controller,
+            focusNode: focusNode,
             keyboardType: keyboardType,
             obscureText: obscureText,
             style: AppTextStyles.bodyLarge,

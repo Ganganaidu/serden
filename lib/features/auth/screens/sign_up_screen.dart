@@ -10,6 +10,41 @@ import '../bloc/auth_bloc.dart';
 import 'widgets/auth_scaffold.dart';
 import 'widgets/turnstile_sheet.dart';
 
+/// Password rules shown in the checklist and used for validation.
+typedef _PasswordRule = ({
+  String label,
+  bool Function(String) passes,
+  String error,
+});
+
+final _passwordRules = <_PasswordRule>[
+  (
+    label: 'At least 8 characters',
+    passes: (v) => v.length >= 8,
+    error: 'Must be at least 8 characters.',
+  ),
+  (
+    label: 'A lowercase letter (a–z)',
+    passes: (v) => v.contains(RegExp(r'[a-z]')),
+    error: 'Must include at least one lowercase letter.',
+  ),
+  (
+    label: 'An uppercase letter (A–Z)',
+    passes: (v) => v.contains(RegExp(r'[A-Z]')),
+    error: 'Must include at least one uppercase letter.',
+  ),
+  (
+    label: 'A number (0–9)',
+    passes: (v) => v.contains(RegExp(r'[0-9]')),
+    error: 'Must include at least one number.',
+  ),
+  (
+    label: 'A symbol, such as !@#\$%^&*',
+    passes: (v) => v.contains(RegExp(r'[^A-Za-z0-9]')),
+    error: 'Must include at least one special character.',
+  ),
+];
+
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
 
@@ -24,6 +59,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _confirmPassword = TextEditingController();
   final _firstName = TextEditingController();
   final _lastName = TextEditingController();
+  final _passwordFocus = FocusNode();
+  bool _passwordFocused = false;
   bool _showPassword = false;
 
   String? _firstNameError;
@@ -35,18 +72,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   static String? _checkPassword(String value) {
     if (value.isEmpty) return 'Required.';
-    if (value.length < 8) return 'Must be at least 8 characters.';
-    if (!value.contains(RegExp(r'[A-Z]'))) {
-      return 'Must include at least one uppercase letter.';
-    }
-    if (!value.contains(RegExp(r'[a-z]'))) {
-      return 'Must include at least one lowercase letter.';
-    }
-    if (!value.contains(RegExp(r'[0-9]'))) {
-      return 'Must include at least one number.';
-    }
-    if (!value.contains(RegExp(r'[^A-Za-z0-9]'))) {
-      return 'Must include at least one special character.';
+    for (final rule in _passwordRules) {
+      if (!rule.passes(value)) return rule.error;
     }
     return null;
   }
@@ -80,15 +107,28 @@ class _SignUpScreenState extends State<SignUpScreen> {
       }
     });
     _password.addListener(_onPasswordChanged);
+    _passwordFocus.addListener(_onPasswordFocusChanged);
     _confirmPassword.addListener(_onConfirmChanged);
+  }
+
+  /// The checklist shows while the password field is focused; the field's
+  /// error line only appears once the user leaves it (or submits).
+  void _onPasswordFocusChanged() {
+    final focused = _passwordFocus.hasFocus;
+    setState(() {
+      _passwordFocused = focused;
+      if (focused) {
+        _passwordError = null;
+      } else {
+        _passwordError = _password.text.isEmpty
+            ? null
+            : _checkPassword(_password.text);
+      }
+    });
   }
 
   void _onPasswordChanged() {
     setState(() {
-      // Only show live rule errors after the user has started typing.
-      _passwordError = _password.text.isEmpty
-          ? null
-          : _checkPassword(_password.text);
       if (_confirmPassword.text.isNotEmpty) {
         _confirmError = _password.text != _confirmPassword.text
             ? 'Passwords do not match.'
@@ -99,7 +139,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   void _onConfirmChanged() {
     setState(() {
-      _confirmError = _confirmPassword.text.isNotEmpty &&
+      _confirmError =
+          _confirmPassword.text.isNotEmpty &&
               _password.text != _confirmPassword.text
           ? 'Passwords do not match.'
           : null;
@@ -108,6 +149,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
   @override
   void dispose() {
+    _passwordFocus.removeListener(_onPasswordFocusChanged);
+    _passwordFocus.dispose();
     _email.dispose();
     _username.dispose();
     _password.dispose();
@@ -126,8 +169,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
     final confirmError = _confirmPassword.text.isEmpty
         ? 'Required.'
         : _password.text != _confirmPassword.text
-            ? 'Passwords do not match.'
-            : null;
+        ? 'Passwords do not match.'
+        : null;
 
     if (firstNameError != null ||
         lastNameError != null ||
@@ -157,16 +200,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
     if (token == null || !mounted) return;
 
     context.read<AuthBloc>().add(
-          AuthSignUpRequested(
-            email: _email.text.trim(),
-            username: _username.text.trim(),
-            password: _password.text,
-            confirmPassword: _confirmPassword.text,
-            firstName: _firstName.text.trim(),
-            lastName: _lastName.text.trim(),
-            turnstileToken: token,
-          ),
-        );
+      AuthSignUpRequested(
+        email: _email.text.trim(),
+        username: _username.text.trim(),
+        password: _password.text,
+        confirmPassword: _confirmPassword.text,
+        firstName: _firstName.text.trim(),
+        lastName: _lastName.text.trim(),
+        turnstileToken: token,
+      ),
+    );
   }
 
   @override
@@ -176,9 +219,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
         if (state is AuthRegistered) {
           context.go(AppRoutes.emailVerification, extra: state.email);
         } else if (state is AuthFailure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.message)));
         }
       },
       child: AuthScaffold(
@@ -222,25 +265,51 @@ class _SignUpScreenState extends State<SignUpScreen> {
             controller: _username,
             errorText: _usernameError,
           ),
-          AuthField(
-            label: 'Password',
-            hint: '8+ characters',
-            controller: _password,
-            obscureText: !_showPassword,
-            helper: _passwordError == null
-                ? 'Uppercase, lowercase, number, and special character.'
-                : null,
-            errorText: _passwordError,
-            suffix: IconButton(
-              icon: Icon(
-                _showPassword
-                    ? Icons.visibility_off_outlined
-                    : Icons.visibility_outlined,
-                size: 20,
-                color: AppColors.inkFaint,
+          // The checklist is drawn above the field (not in the flow), so it
+          // never moves the fields or the Create account button.
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              AuthField(
+                label: 'Password',
+                hint: '8+ characters',
+                controller: _password,
+                focusNode: _passwordFocus,
+                obscureText: !_showPassword,
+                errorText: _passwordError,
+                suffix: IconButton(
+                  icon: Icon(
+                    _showPassword
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    size: 20,
+                    color: AppColors.inkFaint,
+                  ),
+                  onPressed: () =>
+                      setState(() => _showPassword = !_showPassword),
+                ),
               ),
-              onPressed: () => setState(() => _showPassword = !_showPassword),
-            ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                // Shifts the card up by its own height so its bottom edge
+                // sits just above the Password label.
+                child: FractionalTranslation(
+                  translation: const Offset(0, -1),
+                  child: IgnorePointer(
+                    child: AnimatedOpacity(
+                      opacity: _passwordFocused ? 1 : 0,
+                      duration: const Duration(milliseconds: 150),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _PasswordRulesCard(password: _password.text),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
           AuthField(
             label: 'Confirm password',
@@ -282,8 +351,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ],
               ),
-              style: AppTextStyles.bodyMedium
-                  .copyWith(color: AppColors.inkSoft, height: 1.3),
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.inkSoft,
+                height: 1.3,
+              ),
             ),
           ),
           const SizedBox(height: 12),
@@ -291,11 +362,91 @@ class _SignUpScreenState extends State<SignUpScreen> {
             child: Text(
               'By continuing you agree to our Terms of Service and Privacy Policy',
               textAlign: TextAlign.center,
-              style: AppTextStyles.caption.copyWith(fontSize: 11.5, height: 1.5),
+              style: AppTextStyles.caption.copyWith(
+                fontSize: 11.5,
+                height: 1.5,
+              ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Floating checklist shown above the password field while it is focused.
+class _PasswordRulesCard extends StatelessWidget {
+  final String password;
+
+  const _PasswordRulesCard({required this.password});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.line),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x26000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Your password needs',
+            style: AppTextStyles.labelMedium.copyWith(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          for (final rule in _passwordRules)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: _RuleRow(label: rule.label, met: rule.passes(password)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuleRow extends StatelessWidget {
+  final String label;
+  final bool met;
+
+  const _RuleRow({required this.label, required this.met});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(
+          Icons.check_rounded,
+          size: 16,
+          color: met ? AppColors.greenDeep : AppColors.inkFaint,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            label,
+            style: AppTextStyles.bodyMedium.copyWith(
+              fontSize: 13,
+              height: 1.2,
+              color: met ? AppColors.greenDeep : AppColors.inkSoft,
+              fontWeight: met ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

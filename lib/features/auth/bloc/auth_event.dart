@@ -37,14 +37,14 @@ class AuthSignUpRequested extends AuthEvent {
   });
   @override
   List<Object> get props => [
-        email,
-        username,
-        password,
-        confirmPassword,
-        firstName,
-        lastName,
-        turnstileToken,
-      ];
+    email,
+    username,
+    password,
+    confirmPassword,
+    firstName,
+    lastName,
+    turnstileToken,
+  ];
 }
 
 class AuthSignOutRequested extends AuthEvent {

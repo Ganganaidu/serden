@@ -56,11 +56,8 @@ class _SignInScreenState extends State<SignInScreen> {
     }
 
     context.read<AuthBloc>().add(
-          AuthSignInRequested(
-            email: _email.text.trim(),
-            password: _password.text,
-          ),
-        );
+      AuthSignInRequested(email: _email.text.trim(), password: _password.text),
+    );
   }
 
   @override
@@ -68,9 +65,9 @@ class _SignInScreenState extends State<SignInScreen> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthFailure) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(state.message)));
         }
       },
       child: AuthScaffold(
@@ -152,8 +149,10 @@ class _SignInScreenState extends State<SignInScreen> {
                   ),
                 ],
               ),
-              style: AppTextStyles.bodyMedium
-                  .copyWith(color: AppColors.inkSoft, height: 1.3),
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: AppColors.inkSoft,
+                height: 1.3,
+              ),
             ),
           ),
         ],
