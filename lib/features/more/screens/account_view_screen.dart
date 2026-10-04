@@ -12,6 +12,9 @@ import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../auth/models/user_model.dart';
+import '../../plans/cubit/membership_cubit.dart';
+import '../../plans/models/subscription_usage.dart';
+import '../../plans/widgets/membership_card.dart';
 import '../cubit/account_view_cubit.dart';
 import '../cubit/my_account_cubit.dart';
 
@@ -34,6 +37,7 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
     final authState = context.read<AuthBloc>().state;
     if (authState is AuthAuthenticated) {
       context.read<AccountViewCubit>().load(authState.user.userId);
+      context.read<MembershipCubit>().load(authState.user.userId);
     }
   }
 
@@ -132,9 +136,12 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
                               user != null && user.fullName.isNotEmpty
                                   ? user.fullName
                                   : '—',
+                              onTap: _showContactToChange,
                             ),
-                            _valueRow('Username', user?.username ?? '—'),
-                            _valueRow('Email', user?.email ?? '—'),
+                            _valueRow('Username', user?.username ?? '—',
+                                onTap: _showContactToChange),
+                            _valueRow('Email', user?.email ?? '—',
+                                onTap: _showContactToChange),
                             _serdenIdRow(
                                 pro?.serdenProId ?? user?.publicId ?? '—'),
                             _actionRow(
@@ -145,36 +152,14 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
                           ],
                         ),
                       ),
-                      const SectionHeader(title: 'Membership and billing'),
-                      AppCard(
-                        child: Column(
-                          children: [
-                            _membershipRow(user),
-                            _iconRow(
-                              icon: Icons.credit_card_outlined,
-                              title: 'Payment method',
-                              subtitle: 'Manage billing',
-                              showDivider: _isActive(user),
-                              onTap: () {},
-                            ),
-                            if (_isActive(user)) _cancelMembershipRow(),
-                          ],
+                      const SizedBox(height: 20),
+                      BlocBuilder<MembershipCubit, MembershipState>(
+                        builder: (context, m) => MembershipCard(
+                          tier: m is MembershipLoaded
+                              ? (m.usage?.tier ?? PlanTier.basic)
+                              : null,
+                          usage: m is MembershipLoaded ? m.usage : null,
                         ),
-                      ),
-                      const SizedBox(height: 22),
-                      OutlinedButton.icon(
-                        onPressed: () => context
-                            .read<AuthBloc>()
-                            .add(const AuthSignOutRequested()),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.inkSoft,
-                          side: const BorderSide(color: AppColors.line),
-                          backgroundColor: AppColors.card,
-                          textStyle:
-                              AppTextStyles.buttonText.copyWith(fontSize: 14.5),
-                        ),
-                        icon: const Icon(Icons.logout, size: 16),
-                        label: const Text('Sign out'),
                       ),
                       if (_versionLabel.isNotEmpty)
                         Padding(
@@ -202,39 +187,6 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
     );
   }
 
-  String _subscriptionSubtitle(UserModel? user) {
-    if (user == null) return '—';
-    final status = user.subscriptionStatus ?? 'Active';
-    final end = user.subscriptionEndDate;
-    if (end == null) return status;
-    final formatted =
-        '${_monthName(end.month)} ${end.day}, ${end.year}';
-    return 'Renews $formatted';
-  }
-
-  String _monthName(int month) => const [
-        '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-      ][month];
-
-  bool _isActive(UserModel? user) {
-    if (user == null) return false;
-    final status = (user.subscriptionStatus ?? '').toLowerCase();
-    if (status.isEmpty ||
-        status == 'none' ||
-        status == 'inactive' ||
-        status == 'expired' ||
-        status == 'canceled' ||
-        status == 'cancelled') {
-      return false;
-    }
-    final end = user.subscriptionEndDate;
-    if (end != null && end.isBefore(DateTime.now())) {
-      return false;
-    }
-    return true;
-  }
-
   void _openChangePassword(UserModel? user) {
     if (user == null) return;
     showModalBottomSheet<void>(
@@ -248,21 +200,50 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
     );
   }
 
-  void _showCancelDialog() {
-    showDialog<void>(
+  /// Name, username and email can't be edited in-app — point to support.
+  void _showContactToChange() {
+    showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cancel membership?'),
-        content: const Text(
-          'Your Pro access will remain active until the end of your current '
-          'billing period. To proceed, please contact support@serden.com.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Dismiss'),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 10, 22, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 18),
+                  decoration: BoxDecoration(
+                    color: AppColors.grabber,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              Text('Need to change your name or email?',
+                  style: AppTextStyles.headingMedium.copyWith(fontSize: 18)),
+              const SizedBox(height: 8),
+              Text(
+                "Contact us and we'll update it for you.",
+                style: AppTextStyles.bodyMedium
+                    .copyWith(fontSize: 14.5, color: AppColors.inkSoft),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    context.push(AppRoutes.contactUs);
+                  },
+                  child: const Text('Contact us'),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -282,107 +263,6 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
           children: [
             Text(label,
                 style: AppTextStyles.rowTitle.copyWith(fontSize: 14)),
-            const Spacer(),
-            const Icon(Icons.chevron_right,
-                size: 16, color: AppColors.inkFaint),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _membershipRow(UserModel? user) {
-    final active = _isActive(user);
-    return InkWell(
-      onTap: () => context.push(AppRoutes.choosePlan),
-      child: Container(
-        decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.line)),
-        ),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color:
-                    active ? AppColors.greenTint : AppColors.grayTint,
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(
-                Icons.verified_user_outlined,
-                size: 18,
-                color: active
-                    ? AppColors.greenDeep
-                    : AppColors.inkSoft,
-              ),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text('Pro membership',
-                          style: AppTextStyles.rowTitle
-                              .copyWith(fontSize: 14.5)),
-                      if (active) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.greenTint,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            'Active',
-                            style: TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.greenDeep,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _subscriptionSubtitle(user),
-                    style: AppTextStyles.caption.copyWith(fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right,
-                size: 16, color: AppColors.inkFaint),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _cancelMembershipRow() {
-    return InkWell(
-      onTap: _showCancelDialog,
-      child: Padding(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            const Icon(Icons.cancel_outlined,
-                size: 18, color: AppColors.orange500),
-            const SizedBox(width: 12),
-            Text(
-              'Cancel membership',
-              style: AppTextStyles.rowTitle.copyWith(
-                  fontSize: 14, color: AppColors.orange500),
-            ),
             const Spacer(),
             const Icon(Icons.chevron_right,
                 size: 16, color: AppColors.inkFaint),
@@ -584,58 +464,6 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
     );
   }
 
-  Widget _iconRow({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-    bool greenIcon = false,
-    bool showDivider = true,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          border: showDivider
-              ? const Border(bottom: BorderSide(color: AppColors.line))
-              : null,
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: greenIcon ? AppColors.greenTint : AppColors.grayTint,
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(
-                icon,
-                size: 18,
-                color: greenIcon ? AppColors.greenDeep : AppColors.inkSoft,
-              ),
-            ),
-            const SizedBox(width: 13),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
-                      style: AppTextStyles.rowTitle.copyWith(fontSize: 14.5)),
-                  const SizedBox(height: 2),
-                  Text(subtitle,
-                      style: AppTextStyles.caption.copyWith(fontSize: 12)),
-                ],
-              ),
-            ),
-            const Icon(Icons.chevron_right,
-                size: 16, color: AppColors.inkFaint),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class _ChangePasswordSheet extends StatefulWidget {

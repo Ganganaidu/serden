@@ -39,7 +39,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthSignInRequested event,
     Emitter<AuthState> emit,
   ) async {
-    emit(const AuthLoading());
+    emit(const AuthSubmitting());
     final result = await _repository.signIn(event.email, event.password);
     result.fold(
       (failure) => emit(AuthFailure(failure.message)),
@@ -51,7 +51,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     AuthSignUpRequested event,
     Emitter<AuthState> emit,
   ) async {
-    emit(const AuthLoading());
+    emit(const AuthSubmitting());
     final result = await _repository.signUp(
       email: event.email,
       username: event.username,

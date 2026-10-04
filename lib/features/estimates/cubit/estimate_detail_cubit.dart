@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/errors/failures.dart';
 import '../../clients/models/client_model.dart';
 import '../../clients/repository/client_repository.dart';
 import '../../invoices/models/invoice_model.dart';
@@ -126,8 +127,15 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
     final result =
         await _invoiceRepository.createInvoice(_invoiceFromEstimate(current));
     await result.fold(
-      (failure) async => emit(EstimateDetailActionFailure(
-          estimate: current, message: failure.message)),
+      (failure) async {
+        if (failure is SubscriptionLimitFailure) {
+          emit(EstimateDetailLimitReached(current));
+          emit(_loaded(current));
+        } else {
+          emit(EstimateDetailActionFailure(
+              estimate: current, message: failure.message));
+        }
+      },
       (invoice) async {
         // Converting means the client accepted — mark the estimate approved.
         // Best-effort: the invoice already exists, so a failure here must not
@@ -244,6 +252,7 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
         EstimateDetailActionFailure(:final estimate) => estimate,
         EstimateDetailActionSuccess(:final estimate) => estimate,
         EstimateDetailInvoiceCreated(:final estimate) => estimate,
+        EstimateDetailLimitReached(:final estimate) => estimate,
         _ => null,
       };
 }

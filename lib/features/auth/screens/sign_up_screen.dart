@@ -212,6 +212,30 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
+  /// "User already exists with this email or username" → offer Sign in.
+  void _showAlreadyExists(String message) {
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Account already exists'),
+        content: Text('$message\n\nPlease sign in instead.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+              context.go(AppRoutes.signIn);
+            },
+            child: const Text('Sign in'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
@@ -219,9 +243,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
         if (state is AuthRegistered) {
           context.go(AppRoutes.emailVerification, extra: state.email);
         } else if (state is AuthFailure) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(state.message)));
+          if (state.message.toLowerCase().contains('already')) {
+            _showAlreadyExists(state.message);
+          } else {
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(state.message)));
+          }
         }
       },
       child: AuthScaffold(
@@ -321,8 +349,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
           const SizedBox(height: 8),
           BlocBuilder<AuthBloc, AuthState>(
             builder: (context, state) => ElevatedButton(
-              onPressed: state is AuthLoading ? null : _submit,
-              child: state is AuthLoading
+              onPressed: state is AuthSubmitting ? null : _submit,
+              child: state is AuthSubmitting
                   ? const SizedBox(
                       width: 22,
                       height: 22,

@@ -1,3 +1,5 @@
+import '../../features/plans/cubit/membership_cubit.dart';
+import '../../features/plans/repository/subscription_repository.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/auth/repository/auth_repository.dart';
 import '../../features/clients/bloc/client_bloc.dart';
@@ -52,6 +54,7 @@ class Injection {
   static late TaxRepository _taxRepository;
   static late CompanyProfileRepository _companyProfileRepository;
   static late ContactUsRepository _contactUsRepository;
+  static late SubscriptionRepository _subscriptionRepository;
 
   static void init() {
     _secureStorage = SecureStorage();
@@ -73,6 +76,8 @@ class Injection {
     _companyProfileRepository =
         CompanyProfileRepositoryImpl(apiClient: _apiClient);
     _contactUsRepository = ContactUsRepositoryImpl(apiClient: _apiClient);
+    _subscriptionRepository =
+        SubscriptionRepositoryImpl(apiClient: _apiClient);
   }
 
   static SecureStorage get secureStorage => _secureStorage;
@@ -142,6 +147,9 @@ class Injection {
 
   static AccountViewCubit createAccountViewCubit() =>
       AccountViewCubit(apiClient: _apiClient);
+
+  static MembershipCubit createMembershipCubit() =>
+      MembershipCubit(repository: _subscriptionRepository);
 
   static CompanyProfileCubit createCompanyProfileCubit() =>
       CompanyProfileCubit(repository: _companyProfileRepository);

@@ -23,6 +23,7 @@ import '../../features/invoices/models/invoice_model.dart';
 import '../../features/items/models/item_model.dart';
 import '../../features/items/models/markup_template.dart';
 import '../../features/taxes/models/tax_model.dart';
+import 'subscription_limit_dialog.dart';
 
 /// Sentinel id returned by the tax/markup picker sheets' "Custom amount"
 /// row — picking it just reveals the manually-editable totals row instead
@@ -318,6 +319,10 @@ class _DocumentFormState extends State<DocumentForm> {
       context.pop();
     } else if (state is InvoiceMutateFailure) {
       setState(() => _submitting = false);
+      if (state.limitReached) {
+        showSubscriptionLimitDialog(context);
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(state.message),

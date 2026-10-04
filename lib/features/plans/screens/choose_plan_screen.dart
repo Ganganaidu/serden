@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
 
+/// Plan picker: a horizontal pager of plan cards (Basic · Pro · Elite) with a
+/// Monthly / Annual toggle. [initialPlan] is `basic`, `pro` or `elite`.
 class ChoosePlanScreen extends StatefulWidget {
   final String initialPlan;
   const ChoosePlanScreen({super.key, this.initialPlan = 'basic'});
@@ -14,178 +16,216 @@ class ChoosePlanScreen extends StatefulWidget {
 
 class _ChoosePlanScreenState extends State<ChoosePlanScreen> {
   bool _annual = true;
+  late final PageController _controller;
+  late int _page;
+
+  static const _planKeys = ['basic', 'pro', 'elite'];
+
+  @override
+  void initState() {
+    super.initState();
+    _page = _planKeys.indexOf(widget.initialPlan.toLowerCase());
+    if (_page < 0) _page = 0;
+    _controller = PageController(initialPage: _page, viewportFraction: 0.88);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  List<_Plan> get _plans => [
+        const _Plan(
+          name: 'Basic',
+          description: 'For pros who want to be found and try the tools.',
+          price: r'$0',
+          period: 'forever',
+          note: 'Free forever, no credit card',
+          cta: 'Join for free',
+          featuresTitle: 'What you get',
+          features: [
+            'Free business listing in the Serden directory',
+            'Business profile with photos, services and contact details',
+            'Collect and reply to customer reviews',
+            'Up to 3 estimates and invoices a month',
+            'Unlimited clients and saved line items',
+            'Post and answer questions in the pro community',
+          ],
+        ),
+        _Plan(
+          name: 'Pro',
+          description:
+              'For working contractors who want a steady stream of jobs.',
+          price: _annual ? r'$100' : r'$9.99',
+          period: _annual ? '/ year' : '/ month',
+          note: _annual ? r'Save $19.88 a year — about 2 months free' : null,
+          cta: 'Get Pro',
+          featured: true,
+          featuresTitle: 'Everything in Basic, plus',
+          features: const [
+            'Up to 25 estimates and invoices a month',
+            'Highlighted profile in directory search results',
+            'Boosted ranking so homeowners see you sooner',
+            '"Request a Quote" button on your listing',
+            'Lead portal to track and respond to quote requests',
+          ],
+        ),
+        _Plan(
+          name: 'Elite',
+          description:
+              'For teams that want maximum exposure in their market.',
+          price: _annual ? r'$1,000' : r'$99',
+          period: _annual ? '/ year' : '/ month',
+          note: _annual ? r'Save $188 a year — about 2 months free' : null,
+          cta: 'Get Elite',
+          featuresTitle: 'Everything in Pro, plus',
+          features: const [
+            'Unlimited estimates and invoices',
+            'Bold listing that stands out in every result',
+            'Top placement — always shown first in the directory',
+            'Priority on homeowner quote requests in your area',
+          ],
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {
+    final plans = _plans;
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F2F7),
+      backgroundColor: AppColors.page,
       body: SafeArea(
         child: Column(
           children: [
-            // Close button
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Material(
-                  color: const Color(0xFFE4E4E8),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    onTap: () => context.pop(),
-                    customBorder: const CircleBorder(),
-                    child: const SizedBox(
-                      width: 30,
-                      height: 30,
-                      child: Icon(
-                        Icons.close,
-                        size: 16,
-                        color: AppColors.inkSoft,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 8, 16, 0),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'SERDEN',
+                      style: TextStyle(
+                        fontFamily: AppTextStyles.fontFamily,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1,
+                        color: AppColors.green800,
                       ),
                     ),
                   ),
-                ),
-              ),
-            ),
-            Expanded(
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                ),
-                slivers: [
-                  // Header text
-                  const SliverToBoxAdapter(
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(22, 10, 22, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'SERDEN',
-                            style: TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5,
-                              color: AppColors.green800,
-                            ),
-                          ),
-                          SizedBox(height: 6),
-                          Text(
-                            'Unlock the full potential of your business',
-                            style: TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 26,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                              height: 1.18,
-                              color: AppColors.ink,
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Choose the plan that fits how you work, and upgrade any time.',
-                            style: TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 14.5,
-                              height: 1.4,
-                              color: AppColors.inkSoft,
-                            ),
-                          ),
-                        ],
+                  Material(
+                    color: AppColors.grayTint,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      onTap: () => context.pop(),
+                      customBorder: const CircleBorder(),
+                      child: const SizedBox(
+                        width: 30,
+                        height: 30,
+                        child: Icon(Icons.close,
+                            size: 16, color: AppColors.inkSoft),
                       ),
-                    ),
-                  ),
-                  // Billing toggle
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
-                      child: _BillingToggle(
-                        annual: _annual,
-                        onChanged: (v) => setState(() => _annual = v),
-                      ),
-                    ),
-                  ),
-                  // Plan cards
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(22, 16, 22, 0),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        _PlanCard(
-                          name: 'Basic',
-                          price: r'$0',
-                          period: _annual ? '/ year' : '/ month',
-                          savings: null,
-                          description: 'No credit card required.',
-                          ctaLabel: 'Join for free',
-                          primaryCta: false,
-                          features: const [
-                            'Listed in our business directory',
-                            'Free basic business profile',
-                            'Post in the forum',
-                            'Unlimited clients',
-                            'Up to 3 estimates & invoices per month',
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        _PlanCard(
-                          name: 'Pro',
-                          price: _annual ? r'$100' : r'$9.99',
-                          period: _annual ? '/ year' : '/ month',
-                          savings: _annual
-                              ? 'Save 16% (\$20) paid annually'
-                              : null,
-                          description:
-                              'Best for professional freelancers and small teams.',
-                          ctaLabel: 'Buy now',
-                          primaryCta: false,
-                          leadFeature: 'Everything in Basic, plus:',
-                          features: const [
-                            'Up to 25 estimates & invoices per month',
-                            'Profile highlighted in the directory',
-                            'Boosted search ranking',
-                            '"Request a quote" lead button',
-                            'Access to the lead portal',
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        _PlanCard(
-                          name: 'Elite',
-                          price: _annual ? r'$1,000' : r'$99',
-                          period: _annual ? '/ year' : '/ month',
-                          savings: _annual
-                              ? 'Save 16% (\$188) paid annually'
-                              : null,
-                          description:
-                              'Best for growing or enterprise teams.',
-                          ctaLabel: 'Buy now',
-                          primaryCta: true,
-                          featured: true,
-                          leadFeature: 'Everything in Pro, plus:',
-                          features: const [
-                            'Unlimited estimates & invoices',
-                            'Profile displayed in bold in the directory',
-                            'Boosted search ranking',
-                            '"Request a quote" lead button',
-                            'Access to the lead portal',
-                            'High visibility — always shown first',
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        const Text(
-                          'Prices shown in USD. Cancel anytime.\nAnnual plans billed once per year.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontFamily: AppTextStyles.fontFamily,
-                            fontSize: 11.5,
-                            height: 1.6,
-                            color: Color(0xFFAEAEB2),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                      ]),
                     ),
                   ),
                 ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(22, 10, 22, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Unlock the full potential of your business',
+                    style: TextStyle(
+                      fontFamily: AppTextStyles.fontFamily,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      height: 1.18,
+                      color: AppColors.ink,
+                    ),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Choose the plan that fits how you work, and upgrade any time.',
+                    style: TextStyle(
+                      fontFamily: AppTextStyles.fontFamily,
+                      fontSize: 14,
+                      height: 1.4,
+                      color: AppColors.inkSoft,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 16, 22, 14),
+              child: _BillingToggle(
+                annual: _annual,
+                onChanged: (v) => setState(() => _annual = v),
+              ),
+            ),
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: plans.length,
+                onPageChanged: (i) => setState(() => _page = i),
+                itemBuilder: (context, i) => AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    var delta = (i - _page).toDouble();
+                    if (_controller.hasClients &&
+                        _controller.position.haveDimensions) {
+                      delta = i - (_controller.page ?? _page.toDouble());
+                    }
+                    final t = (1 - delta.abs()).clamp(0.0, 1.0);
+                    return Transform.scale(
+                      scale: 0.94 + 0.06 * t,
+                      child: Opacity(opacity: 0.6 + 0.4 * t, child: child),
+                    );
+                  },
+                  child: _PlanCard(plan: plans[i]),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var i = 0; i < plans.length; i++)
+                    GestureDetector(
+                      onTap: () => _controller.animateToPage(
+                        i,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOutCubic,
+                      ),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        margin: const EdgeInsets.symmetric(horizontal: 3),
+                        width: i == _page ? 22 : 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: i == _page
+                              ? AppColors.green800
+                              : AppColors.grabber,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Prices shown in USD. Cancel anytime.',
+                style: TextStyle(
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontSize: 11.5,
+                  color: AppColors.inkFaint,
+                ),
               ),
             ),
           ],
@@ -193,6 +233,30 @@ class _ChoosePlanScreenState extends State<ChoosePlanScreen> {
       ),
     );
   }
+}
+
+class _Plan {
+  final String name;
+  final String description;
+  final String price;
+  final String period;
+  final String? note;
+  final String cta;
+  final String featuresTitle;
+  final List<String> features;
+  final bool featured;
+
+  const _Plan({
+    required this.name,
+    required this.description,
+    required this.price,
+    required this.period,
+    required this.cta,
+    required this.featuresTitle,
+    required this.features,
+    this.note,
+    this.featured = false,
+  });
 }
 
 // ─── Billing toggle ──────────────────────────────────────────────────────────
@@ -203,63 +267,49 @@ class _BillingToggle extends StatelessWidget {
 
   const _BillingToggle({required this.annual, required this.onChanged});
 
-  static const _padding = 3.0;
+  static const _padding = 4.0;
   static const _duration = Duration(milliseconds: 260);
-  static const _curve = Curves.easeInOut;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 44,
+      height: 56,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.grayTint,
         borderRadius: BorderRadius.circular(50),
         border: Border.all(color: AppColors.line),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final pillW = (constraints.maxWidth - _padding * 2) / 2;
-          final pillH = constraints.maxHeight - _padding * 2;
           return Stack(
             children: [
-              // Sliding green pill — one element, animates position
               AnimatedPositioned(
                 duration: _duration,
-                curve: _curve,
+                curve: Curves.easeInOut,
                 top: _padding,
-                left: annual
-                    ? _padding + pillW
-                    : _padding,
+                bottom: _padding,
+                left: annual ? _padding + pillW : _padding,
                 width: pillW,
-                height: pillH,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: AppColors.green800,
                     borderRadius: BorderRadius.circular(50),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.green800.withValues(alpha: 0.25),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
                   ),
                 ),
               ),
-              // Labels on top of the pill
               Positioned.fill(
                 child: Row(
                   children: [
-                    _SegmentLabel(
+                    _Segment(
                       label: 'Monthly',
                       active: !annual,
-                      duration: _duration,
                       onTap: () => onChanged(false),
                     ),
-                    _SegmentLabel(
+                    _Segment(
                       label: 'Annual',
+                      sub: 'about 2 months free',
                       active: annual,
-                      duration: _duration,
                       onTap: () => onChanged(true),
                     ),
                   ],
@@ -273,35 +323,53 @@ class _BillingToggle extends StatelessWidget {
   }
 }
 
-class _SegmentLabel extends StatelessWidget {
+class _Segment extends StatelessWidget {
   final String label;
+  final String? sub;
   final bool active;
-  final Duration duration;
   final VoidCallback onTap;
 
-  const _SegmentLabel({
+  const _Segment({
     required this.label,
     required this.active,
-    required this.duration,
     required this.onTap,
+    this.sub,
   });
 
   @override
   Widget build(BuildContext context) {
+    final color = active ? Colors.white : AppColors.inkSoft;
     return Expanded(
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: AnimatedDefaultTextStyle(
-          duration: duration,
-          curve: Curves.easeInOut,
-          style: TextStyle(
-            fontFamily: AppTextStyles.fontFamily,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: active ? Colors.white : const Color(0xFF6E6E73),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedDefaultTextStyle(
+                duration: _BillingToggle._duration,
+                style: TextStyle(
+                  fontFamily: AppTextStyles.fontFamily,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+                child: Text(label),
+              ),
+              if (sub != null)
+                AnimatedDefaultTextStyle(
+                  duration: _BillingToggle._duration,
+                  style: TextStyle(
+                    fontFamily: AppTextStyles.fontFamily,
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: active ? Colors.white70 : AppColors.inkFaint,
+                  ),
+                  child: Text(sub!),
+                ),
+            ],
           ),
-          child: Center(child: Text(label)),
         ),
       ),
     );
@@ -311,264 +379,191 @@ class _SegmentLabel extends StatelessWidget {
 // ─── Plan card ───────────────────────────────────────────────────────────────
 
 class _PlanCard extends StatelessWidget {
-  final String name;
-  final String price;
-  final String period;
-  final String? savings;
-  final String description;
-  final String ctaLabel;
-  final bool primaryCta;
-  final List<String> features;
-  final String? leadFeature;
-  final bool featured;
-
-  const _PlanCard({
-    required this.name,
-    required this.price,
-    required this.period,
-    this.savings,
-    required this.description,
-    required this.ctaLabel,
-    required this.primaryCta,
-    required this.features,
-    this.leadFeature,
-    this.featured = false,
-  });
+  final _Plan plan;
+  const _PlanCard({required this.plan});
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            border: Border.all(
-              color: featured ? AppColors.green800 : const Color(0xFFE5E5EA),
-              width: featured ? 1.5 : 1,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 14),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: plan.featured ? AppColors.green800 : AppColors.line,
+                  width: plan.featured ? 1.8 : 1,
+                ),
+                boxShadow: plan.featured
+                    ? [
+                        BoxShadow(
+                          color: AppColors.green800.withValues(alpha: 0.12),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                        ),
+                      ]
+                    : null,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(22, 26, 22, 22),
+                child: _content(context),
+              ),
             ),
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: featured
-                ? [
-                    BoxShadow(
-                      color: AppColors.green800.withValues(alpha: 0.10),
-                      blurRadius: 24,
-                      offset: const Offset(0, 8),
+          ),
+          if (plan.featured)
+            Positioned(
+              top: -12,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.green800,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'MOST POPULAR',
+                    style: TextStyle(
+                      fontFamily: AppTextStyles.fontFamily,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                      color: Colors.white,
                     ),
-                  ]
-                : null,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _content(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          plan.name,
+          style: const TextStyle(
+            fontFamily: AppTextStyles.fontFamily,
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: AppColors.green800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          plan.description,
+          style: const TextStyle(
+            fontFamily: AppTextStyles.fontFamily,
+            fontSize: 14.5,
+            height: 1.4,
+            color: AppColors.inkSoft,
+          ),
+        ),
+        const SizedBox(height: 16),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.25),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
           ),
           child: Column(
+            key: ValueKey('${plan.price}${plan.period}'),
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Plan name
-              Text(
-                name,
-                style: const TextStyle(
-                  fontFamily: AppTextStyles.fontFamily,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.ink,
-                ),
-              ),
-              const SizedBox(height: 6),
-              // Price row — slides up/down on billing period change
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 280),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  final slide = Tween<Offset>(
-                    begin: const Offset(0, 0.25),
-                    end: Offset.zero,
-                  ).animate(animation);
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(position: slide, child: child),
-                  );
-                },
-                child: Row(
-                  key: ValueKey('$price$period'),
-                  crossAxisAlignment: CrossAxisAlignment.baseline,
-                  textBaseline: TextBaseline.alphabetic,
-                  children: [
-                    Text(
-                      price,
-                      style: const TextStyle(
-                        fontFamily: AppTextStyles.fontFamily,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                        color: AppColors.ink,
-                      ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    plan.price,
+                    style: const TextStyle(
+                      fontFamily: AppTextStyles.fontFamily,
+                      fontSize: 40,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -1,
+                      color: AppColors.green800,
                     ),
-                    const SizedBox(width: 5),
-                    Text(
-                      period,
-                      style: const TextStyle(
-                        fontFamily: AppTextStyles.fontFamily,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF8E8E93),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              // Savings badge — crossfades in/out
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 220),
-                child: SizedBox(
-                  key: ValueKey(savings),
-                  height: 20,
-                  width: double.infinity,
-                  child: savings != null
-                      ? Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            savings!,
-                            style: const TextStyle(
-                              fontFamily: AppTextStyles.fontFamily,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.green800,
-                            ),
-                          ),
-                        )
-                      : null,
-                ),
-              ),
-              // Description
-              Padding(
-                padding: const EdgeInsets.only(top: 4, bottom: 14),
-                child: Text(
-                  description,
-                  style: const TextStyle(
-                    fontFamily: AppTextStyles.fontFamily,
-                    fontSize: 13.5,
-                    height: 1.4,
-                    color: AppColors.inkSoft,
                   ),
-                ),
+                  const SizedBox(width: 6),
+                  Text(
+                    plan.period,
+                    style: const TextStyle(
+                      fontFamily: AppTextStyles.fontFamily,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.inkSoft,
+                    ),
+                  ),
+                ],
               ),
-              // CTA button
-              _CtaButton(label: ctaLabel, primary: primaryCta),
-              const SizedBox(height: 14),
-              // Lead feature text
-              if (leadFeature != null) ...[
+              if (plan.note != null) ...[
+                const SizedBox(height: 4),
                 Text(
-                  leadFeature!,
+                  plan.note!,
                   style: const TextStyle(
                     fontFamily: AppTextStyles.fontFamily,
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF3A3A3C),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.green800,
                   ),
                 ),
-                const SizedBox(height: 10),
               ],
-              // Feature list
-              for (final f in features) _FeatureRow(feature: f),
             ],
           ),
         ),
-        // "Most popular" badge
-        if (featured)
-          Positioned(
-            top: -12,
-            left: 16,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.green800,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'Most popular',
-                style: TextStyle(
-                  fontFamily: AppTextStyles.fontFamily,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.3,
-                  color: Colors.white,
-                ),
+        const SizedBox(height: 18),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () {},
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.green800,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: const StadiumBorder(),
+              textStyle: const TextStyle(
+                fontFamily: AppTextStyles.fontFamily,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
               ),
             ),
+            child: Text(plan.cta),
           ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          plan.featuresTitle.toUpperCase(),
+          style: const TextStyle(
+            fontFamily: AppTextStyles.fontFamily,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.1,
+            color: AppColors.inkSoft,
+          ),
+        ),
+        const SizedBox(height: 12),
+        for (final f in plan.features) _FeatureRow(feature: f),
       ],
     );
   }
 }
-
-// ─── CTA button ──────────────────────────────────────────────────────────────
-
-class _CtaButton extends StatelessWidget {
-  final String label;
-  final bool primary;
-
-  const _CtaButton({required this.label, required this.primary});
-
-  @override
-  Widget build(BuildContext context) {
-    if (primary) {
-      return SizedBox(
-        width: double.infinity,
-        child: Material(
-          color: AppColors.green800,
-          borderRadius: BorderRadius.circular(12),
-          child: InkWell(
-            onTap: () {},
-            borderRadius: BorderRadius.circular(12),
-            splashColor: Colors.white12,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              child: Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontFamily: AppTextStyles.fontFamily,
-                  fontSize: 15.5,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton(
-        onPressed: () {},
-        style: OutlinedButton.styleFrom(
-          side: const BorderSide(color: AppColors.green800, width: 1.5),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 13),
-          foregroundColor: AppColors.green800,
-          backgroundColor: Colors.transparent,
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontFamily: AppTextStyles.fontFamily,
-            fontSize: 15.5,
-            fontWeight: FontWeight.w600,
-            color: AppColors.green800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Feature row ─────────────────────────────────────────────────────────────
 
 class _FeatureRow extends StatelessWidget {
   final String feature;
@@ -577,33 +572,29 @@ class _FeatureRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 9),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 18,
-            height: 18,
-            margin: const EdgeInsets.only(top: 1),
+            width: 22,
+            height: 22,
             decoration: const BoxDecoration(
               color: AppColors.greenTint,
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.check,
-              size: 11,
-              color: AppColors.green800,
-            ),
+            child:
+                const Icon(Icons.check, size: 13, color: AppColors.green800),
           ),
-          const SizedBox(width: 9),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               feature,
               style: const TextStyle(
                 fontFamily: AppTextStyles.fontFamily,
-                fontSize: 14,
+                fontSize: 14.5,
                 height: 1.35,
-                color: Color(0xFF3A3A3C),
+                color: AppColors.ink,
               ),
             ),
           ),

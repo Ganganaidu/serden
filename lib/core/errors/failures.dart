@@ -20,6 +20,16 @@ class ServerFailure extends Failure {
   List<Object> get props => [message, statusCode ?? 0];
 }
 
+/// The plan's monthly document limit was hit — prompt the user to upgrade.
+class SubscriptionLimitFailure extends Failure {
+  final int? used;
+  final int? limit;
+  const SubscriptionLimitFailure(super.message, {this.used, this.limit});
+
+  @override
+  List<Object> get props => [message, used ?? 0, limit ?? 0];
+}
+
 class UnauthorizedFailure extends Failure {
   const UnauthorizedFailure([super.message = 'Session expired. Please sign in again.']);
 }

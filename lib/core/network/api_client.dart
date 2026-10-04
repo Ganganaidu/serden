@@ -114,6 +114,15 @@ class ApiClient {
         final statusCode = e.response?.statusCode;
         final message = _extractErrorMessage(e.response);
         if (statusCode == 401) return UnauthorizedException(message);
+        final body = e.response?.data;
+        if (body is Map && body['error'] == 'SubscriptionLimitReached') {
+          return SubscriptionLimitException(
+            message,
+            statusCode: statusCode,
+            used: (body['used'] as num?)?.toInt(),
+            limit: (body['limit'] as num?)?.toInt(),
+          );
+        }
         return ServerException(message, statusCode: statusCode);
       default:
         return ServerException('An unexpected error occurred');

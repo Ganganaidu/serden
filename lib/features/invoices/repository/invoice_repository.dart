@@ -191,6 +191,9 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
       return Right(created);
     } on UnauthorizedException catch (e) {
       return Left(UnauthorizedFailure(e.message));
+    } on SubscriptionLimitException catch (e) {
+      return Left(SubscriptionLimitFailure(e.message,
+          used: e.used, limit: e.limit));
     } on ServerException catch (e) {
       return Left(ServerFailure(e.message, statusCode: e.statusCode));
     } on NetworkException catch (e) {

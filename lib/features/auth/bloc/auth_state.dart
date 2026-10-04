@@ -14,6 +14,13 @@ class AuthLoading extends AuthState {
   const AuthLoading();
 }
 
+/// A sign-in / sign-up request is in flight. Unlike [AuthLoading] (the
+/// start-up session check, which shows the splash), the router leaves the
+/// user on the current form so failures and results can be shown there.
+class AuthSubmitting extends AuthState {
+  const AuthSubmitting();
+}
+
 class AuthAuthenticated extends AuthState {
   final UserModel user;
   const AuthAuthenticated(this.user);

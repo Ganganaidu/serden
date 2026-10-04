@@ -70,3 +70,11 @@ class EstimateDetailInvoiceCreated extends EstimateDetailState {
   @override
   List<Object?> get props => [estimate, invoiceId];
 }
+
+/// Creating the invoice hit the plan's monthly limit — show the upgrade prompt.
+class EstimateDetailLimitReached extends EstimateDetailState {
+  final Estimate estimate;
+  const EstimateDetailLimitReached(this.estimate);
+  @override
+  List<Object?> get props => [estimate];
+}

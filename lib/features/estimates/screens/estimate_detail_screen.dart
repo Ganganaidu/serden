@@ -17,6 +17,7 @@ import '../../auth/bloc/auth_bloc.dart';
 import '../../clients/models/client_model.dart';
 import '../../more/models/company_profile_model.dart';
 import '../../../shared/widgets/send_document_sheet.dart';
+import '../../../shared/widgets/subscription_limit_dialog.dart';
 import '../cubit/estimate_detail_cubit.dart';
 import '../models/estimate_model.dart';
 
@@ -217,6 +218,8 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
             ),
           );
           if (context.canPop()) context.pop();
+        } else if (state is EstimateDetailLimitReached) {
+          showSubscriptionLimitDialog(context);
         } else if (state is EstimateDetailInvoiceCreated) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -253,6 +256,7 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
           EstimateDetailActionSuccess(:final estimate) => estimate,
           EstimateDetailActionFailure(:final estimate) => estimate,
           EstimateDetailInvoiceCreated(:final estimate) => estimate,
+          EstimateDetailLimitReached(:final estimate) => estimate,
           _ => null,
         };
         final isBusy = state is EstimateDetailBusy;

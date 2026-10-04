@@ -65,6 +65,16 @@ class _SignInScreenState extends State<SignInScreen> {
     return BlocListener<AuthBloc, AuthState>(
       listener: (context, state) {
         if (state is AuthFailure) {
+          // Account exists but the email link hasn't been clicked yet.
+          final m = state.message.toLowerCase();
+          if (m.contains('verif') ||
+              m.contains('not activated') ||
+              m.contains('confirm your email')) {
+            final id = _email.text.trim();
+            context.go(AppRoutes.emailVerification,
+                extra: id.contains('@') ? id : '');
+            return;
+          }
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(state.message)));
@@ -119,8 +129,8 @@ class _SignInScreenState extends State<SignInScreen> {
           const SizedBox(height: 4),
           BlocBuilder<AuthBloc, AuthState>(
             builder: (context, state) => ElevatedButton(
-              onPressed: state is AuthLoading ? null : _submit,
-              child: state is AuthLoading
+              onPressed: state is AuthSubmitting ? null : _submit,
+              child: state is AuthSubmitting
                   ? const SizedBox(
                       width: 22,
                       height: 22,

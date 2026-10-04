@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../core/errors/failures.dart';
 import '../models/invoice_model.dart';
 import '../repository/invoice_repository.dart';
 
@@ -51,8 +52,11 @@ class InvoiceBloc extends Bloc<InvoiceEvent, InvoicesState> {
     emit(InvoiceMutating(current));
     final result = await _repository.createInvoice(event.invoice);
     result.fold(
-      (failure) =>
-          emit(InvoiceMutateFailure(invoices: current, message: failure.message)),
+      (failure) => emit(InvoiceMutateFailure(
+        invoices: current,
+        message: failure.message,
+        limitReached: failure is SubscriptionLimitFailure,
+      )),
       (created) {
         final next = [_summaryOf(created), ...current];
         emit(InvoiceMutateSuccess(invoices: next, invoice: created));

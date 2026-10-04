@@ -50,7 +50,14 @@ class InvoiceMutateSuccess extends InvoicesState {
 class InvoiceMutateFailure extends InvoicesState {
   final List<InvoiceSummary> invoices;
   final String message;
-  const InvoiceMutateFailure({required this.invoices, required this.message});
+
+  /// The plan's monthly invoice limit was hit — show the upgrade dialog.
+  final bool limitReached;
+  const InvoiceMutateFailure({
+    required this.invoices,
+    required this.message,
+    this.limitReached = false,
+  });
   @override
-  List<Object?> get props => [invoices, message];
+  List<Object?> get props => [invoices, message, limitReached];
 }

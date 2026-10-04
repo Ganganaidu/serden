@@ -463,26 +463,7 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                             MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Company profile',
-                              style: AppTextStyles.headingMedium),
-                          TextButton.icon(
-                            onPressed: () {},
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: Size.zero,
-                              tapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                              textStyle: const TextStyle(
-                                fontFamily: AppTextStyles.fontFamily,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            icon: const Icon(
-                                Icons.visibility_outlined,
-                                size: 13),
-                            label:
-                                const Text('View public listing'),
-                          ),
+                              style: AppTextStyles.headingMedium)
                         ],
                       ),
                       const SizedBox(height: 10),
