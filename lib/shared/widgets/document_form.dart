@@ -18,6 +18,8 @@ import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/clients/models/client_model.dart';
 import '../../features/estimates/bloc/estimate_bloc.dart';
 import '../../features/estimates/models/estimate_model.dart';
+import '../../features/invoices/bloc/invoice_bloc.dart';
+import '../../features/invoices/models/invoice_model.dart';
 import '../../features/items/models/item_model.dart';
 import '../../features/items/models/markup_template.dart';
 import '../../features/taxes/models/tax_model.dart';
@@ -273,49 +275,94 @@ class _DocumentFormState extends State<DocumentForm> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<EstimateBloc, EstimatesState>(
-      listenWhen: (_, __) => _submitting,
-      listener: (context, state) async {
-        if (state is EstimateMutateSuccess) {
-          final estimate = state.estimate;
-          var failedUploads = 0;
-          if (estimate?.publicId != null &&
-              (_photos.isNotEmpty || _files.isNotEmpty)) {
-            failedUploads = await _uploadStagedAttachments(estimate!.publicId!);
-          }
-          if (!context.mounted) return;
-          setState(() => _submitting = false);
-          if (failedUploads > 0) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                    '$failedUploads attachment${failedUploads == 1 ? '' : 's'} '
-                    "failed to upload — you can retry from the estimate's Edit screen."),
-                backgroundColor: AppColors.orangeDeep,
-                duration: const Duration(seconds: 4),
-              ),
-            );
-          }
-          if (estimate != null) {
-            context.pop({'estimate': estimate});
-          } else {
-            context.pop();
-          }
-        } else if (state is EstimateMutateFailure) {
-          setState(() => _submitting = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: AppColors.orangeDeep,
-            ),
-          );
-        }
-      },
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<EstimateBloc, EstimatesState>(
+          listenWhen: (_, __) => _submitting && !widget.isInvoice,
+          listener: _onEstimateState,
+        ),
+        BlocListener<InvoiceBloc, InvoicesState>(
+          listenWhen: (_, __) => _submitting && widget.isInvoice,
+          listener: _onInvoiceState,
+        ),
+      ],
       child: LoadingOverlay(
         isLoading: _submitting,
         child: _buildScaffold(context),
       ),
     );
+  }
+
+  Future<void> _onInvoiceState(
+      BuildContext context, InvoicesState state) async {
+    if (state is InvoiceMutateSuccess) {
+      final invoice = state.invoice;
+      var failedUploads = 0;
+      if (invoice?.publicId != null &&
+          (_photos.isNotEmpty || _files.isNotEmpty)) {
+        failedUploads = await _uploadStagedAttachments(invoice!.publicId!);
+      }
+      if (!context.mounted) return;
+      setState(() => _submitting = false);
+      if (failedUploads > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '$failedUploads attachment${failedUploads == 1 ? '' : 's'} '
+                'failed to upload.'),
+            backgroundColor: AppColors.orangeDeep,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      context.pop();
+    } else if (state is InvoiceMutateFailure) {
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: AppColors.orangeDeep,
+        ),
+      );
+    }
+  }
+
+  Future<void> _onEstimateState(
+      BuildContext context, EstimatesState state) async {
+    if (state is EstimateMutateSuccess) {
+      final estimate = state.estimate;
+      var failedUploads = 0;
+      if (estimate?.publicId != null &&
+          (_photos.isNotEmpty || _files.isNotEmpty)) {
+        failedUploads = await _uploadStagedAttachments(estimate!.publicId!);
+      }
+      if (!context.mounted) return;
+      setState(() => _submitting = false);
+      if (failedUploads > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '$failedUploads attachment${failedUploads == 1 ? '' : 's'} '
+                "failed to upload — you can retry from the estimate's Edit screen."),
+            backgroundColor: AppColors.orangeDeep,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      if (estimate != null) {
+        context.pop({'estimate': estimate});
+      } else {
+        context.pop();
+      }
+    } else if (state is EstimateMutateFailure) {
+      setState(() => _submitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(state.message),
+          backgroundColor: AppColors.orangeDeep,
+        ),
+      );
+    }
   }
 
   Widget _buildScaffold(BuildContext context) {
@@ -1364,8 +1411,11 @@ class _DocumentFormState extends State<DocumentForm> {
   Future<int> _uploadStagedAttachments(String documentPublicId) async {
     var failures = 0;
     for (final photo in _photos) {
-      final result =
-          await Injection.estimateRepository.uploadPhoto(documentPublicId, photo.path);
+      final result = widget.isInvoice
+          ? await Injection.invoiceRepository
+              .uploadPhoto(documentPublicId, photo.path)
+          : await Injection.estimateRepository
+              .uploadPhoto(documentPublicId, photo.path);
       result.fold((_) => failures++, (_) {});
     }
     for (final file in _files) {
@@ -1374,8 +1424,11 @@ class _DocumentFormState extends State<DocumentForm> {
         failures++;
         continue;
       }
-      final result =
-          await Injection.estimateRepository.uploadFile(documentPublicId, path);
+      final result = widget.isInvoice
+          ? await Injection.invoiceRepository
+              .uploadFile(documentPublicId, path)
+          : await Injection.estimateRepository
+              .uploadFile(documentPublicId, path);
       result.fold((_) => failures++, (_) {});
     }
     return failures;
@@ -1459,15 +1512,6 @@ class _DocumentFormState extends State<DocumentForm> {
   // ---- Submit -------------------------------------------------------
 
   void _submit() {
-    if (widget.isInvoice) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Sending invoices will be wired to the API.')),
-      );
-      context.pop();
-      return;
-    }
-
     final proId = _proId;
     if (proId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1508,6 +1552,18 @@ class _DocumentFormState extends State<DocumentForm> {
     final taxActive = _activeAdjustments.contains('tax') && _taxPct > 0;
     final depositActive =
         _activeAdjustments.contains('deposit') && _depositValue > 0;
+
+    if (widget.isInvoice) {
+      _submitInvoice(
+        proId: proId,
+        lineItems: lineItems,
+        markupActive: markupActive,
+        discountActive: discountActive,
+        taxActive: taxActive,
+        depositActive: depositActive,
+      );
+      return;
+    }
 
     final estimate = Estimate(
       estimateId: base?.estimateId ?? 0,
@@ -1554,6 +1610,62 @@ class _DocumentFormState extends State<DocumentForm> {
     bloc.add(base != null
         ? EstimateUpdateRequested(estimate)
         : EstimateCreateRequested(estimate));
+  }
+
+  /// "Due on receipt" → 0, "Net 30" → 30.
+  int get _daysToPay =>
+      int.tryParse(_paymentTerms.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
+  void _submitInvoice({
+    required int proId,
+    required List<EstimateLineItem> lineItems,
+    required bool markupActive,
+    required bool discountActive,
+    required bool taxActive,
+    required bool depositActive,
+  }) {
+    final invoice = Invoice(
+      proId: proId,
+      clientId: _selectedClient!.clientId,
+      clientName: _selectedClient!.name,
+      invoiceNumber:
+          widget.documentNumber > 0 ? widget.documentNumber.toString() : null,
+      invoiceDate: DateTime.now(),
+      daysToPay: _daysToPay,
+      groupItemsIntoSections: _groupSections,
+      subtotal: _subtotal,
+      markupType: markupActive
+          ? (_markupType == MarkupType.flat
+              ? AmountType.fixed.apiValue
+              : AmountType.percent.apiValue)
+          : null,
+      markupValue: markupActive ? _markup : null,
+      discountType: discountActive ? _discountType.apiValue : null,
+      discountValue: discountActive ? _discount : null,
+      depositType: depositActive ? _depositType.apiValue : null,
+      depositValue: depositActive ? _depositValue : null,
+      taxName: taxActive ? (_taxName ?? 'Tax') : null,
+      taxRate: taxActive ? _taxPct : null,
+      total: _total,
+      showClientSignature: _clientSignature,
+      showMySignature: _mySignature,
+      notes: _notes,
+      privateNotes: _privateNotes,
+      lineItems: [
+        for (final li in lineItems)
+          InvoiceLineItem(
+            description: li.description,
+            unitPrice: li.unitPrice,
+            quantity: li.quantity,
+            total: li.total,
+            sortOrder: li.sortOrder,
+            isTaxable: li.isTaxable,
+          ),
+      ],
+    );
+
+    setState(() => _submitting = true);
+    context.read<InvoiceBloc>().add(InvoiceCreateRequested(invoice));
   }
 
   Future<void> _pickPaymentTerms() async {
