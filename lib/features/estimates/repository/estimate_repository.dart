@@ -8,6 +8,7 @@ import '../../../core/errors/failures.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/app_logger.dart';
 import '../models/estimate_model.dart';
+import '../../../shared/models/send_document_draft.dart';
 
 abstract class EstimateRepository {
   Future<Either<Failure, List<EstimateSummary>>> fetchEstimates(
@@ -31,6 +32,10 @@ abstract class EstimateRepository {
   Future<Either<Failure, void>> deleteEstimate(int estimateId);
 
   Future<Either<Failure, void>> sendEstimate(int estimateId);
+
+  /// Emails the estimate to the client (POST /Estimates/{publicId}/send-email).
+  Future<Either<Failure, void>> sendEstimateEmail(
+      String estimatePublicId, SendDocumentDraft draft);
 
   /// Uploads a photo to the estimate's Photos and Attachments section.
   Future<Either<Failure, void>> uploadPhoto(String estimatePublicId, String filePath);
@@ -246,6 +251,29 @@ class EstimateRepositoryImpl implements EstimateRepository {
       return Left(NetworkFailure(e.message));
     } catch (e) {
       AppLogger.error('sendEstimate: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> sendEstimateEmail(
+      String estimatePublicId, SendDocumentDraft draft) async {
+    AppLogger.api('sendEstimateEmail: publicId=$estimatePublicId');
+    try {
+      await _apiClient.post(
+        '/Estimates/$estimatePublicId/send-email',
+        data: draft.toJson(),
+      );
+      AppLogger.api('sendEstimateEmail: success publicId=$estimatePublicId');
+      return const Right(null);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('sendEstimateEmail: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }

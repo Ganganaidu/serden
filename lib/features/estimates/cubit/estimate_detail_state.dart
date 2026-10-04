@@ -60,3 +60,13 @@ class EstimateDetailActionFailure extends EstimateDetailState {
 class EstimateDetailDeleted extends EstimateDetailState {
   const EstimateDetailDeleted();
 }
+
+/// The estimate was converted to a (draft) invoice; the screen navigates to it.
+class EstimateDetailInvoiceCreated extends EstimateDetailState {
+  final Estimate estimate;
+  final int invoiceId;
+  const EstimateDetailInvoiceCreated(
+      {required this.estimate, required this.invoiceId});
+  @override
+  List<Object?> get props => [estimate, invoiceId];
+}

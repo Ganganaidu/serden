@@ -11,10 +11,12 @@ import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../shared/services/document_printer.dart';
 import '../../../shared/widgets/paper_document.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../clients/models/client_model.dart';
 import '../../more/models/company_profile_model.dart';
+import '../../../shared/widgets/send_document_sheet.dart';
 import '../cubit/estimate_detail_cubit.dart';
 import '../models/estimate_model.dart';
 
@@ -33,6 +35,7 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
   bool _mobileMode = false;
   CompanyProfile? _company;
   Client? _client;
+  bool _printing = false;
 
   int get _estimateId => int.tryParse(widget.id) ?? 0;
 
@@ -88,6 +91,49 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
           .applyUpdate(result!['estimate'] as Estimate);
     }
     context.read<EstimateDetailCubit>().fetch(_estimateId, userId: _userId);
+  }
+
+  Future<void> _handleSend(Estimate estimate) async {
+    final draft = await showSendDocumentSheet(
+      context,
+      title: 'Send Estimate',
+      toEmail: _client?.email ?? '',
+      subject: documentSubject('Estimate', estimate.number, _company?.proName),
+      message: 'We are excited about the possibility of working with you.',
+    );
+    if (draft == null || !mounted) return;
+    context.read<EstimateDetailCubit>().sendEmail(draft);
+  }
+
+  Future<void> _handlePrint(Estimate estimate) async {
+    if (_printing) return;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _printing = true);
+    final pages = _PaperDoc(
+      estimate: estimate,
+      company: _company,
+      client: _client,
+      mobileMode: false,
+      onViewChanged: (_) {},
+    ).printPages();
+    try {
+      await DocumentPrinter.print(
+        context,
+        pages: pages,
+        jobName: 'Estimate-${estimate.number}',
+        onReady: _hidePrintLoader,
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not open the print dialog.')),
+      );
+    } finally {
+      _hidePrintLoader();
+    }
+  }
+
+  void _hidePrintLoader() {
+    if (mounted && _printing) setState(() => _printing = false);
   }
 
   void _showMoreSheet(Estimate estimate) {
@@ -156,12 +202,6 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
     );
   }
 
-  void _soon(String what) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$what is coming soon.')),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<EstimateDetailCubit, EstimateDetailState>(
@@ -177,6 +217,15 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
             ),
           );
           if (context.canPop()) context.pop();
+        } else if (state is EstimateDetailInvoiceCreated) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Draft invoice created'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          context.push(
+              AppRoutes.invoiceDetail.replaceFirst(':id', '${state.invoiceId}'));
         } else if (state is EstimateDetailActionSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -201,6 +250,7 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
           EstimateDetailBusy(:final estimate) => estimate,
           EstimateDetailActionSuccess(:final estimate) => estimate,
           EstimateDetailActionFailure(:final estimate) => estimate,
+          EstimateDetailInvoiceCreated(:final estimate) => estimate,
           _ => null,
         };
         final isLoading = state is EstimateDetailLoading;
@@ -209,7 +259,7 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
             state is EstimateDetailError ? state.message : null;
 
         return LoadingOverlay(
-          isLoading: isBusy,
+          isLoading: isBusy || _printing,
           child: Scaffold(
             body: Column(
               children: [
@@ -232,13 +282,13 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
                   DocumentToolbar(
                     actions: [
                       ToolbarAction(Icons.send_outlined, 'Send',
+                          onTap: () => _handleSend(estimate)),
+                      ToolbarAction(Icons.print_outlined, 'Print',
+                          onTap: () => _handlePrint(estimate)),
+                      ToolbarAction(Icons.receipt_long_outlined, 'Invoice',
                           onTap: () => context
                               .read<EstimateDetailCubit>()
-                              .send(_estimateId)),
-                      ToolbarAction(Icons.print_outlined, 'Print',
-                          onTap: () => _soon('Printing')),
-                      ToolbarAction(Icons.receipt_long_outlined, 'Invoice',
-                          onTap: () => _soon('Converting to an invoice')),
+                              .convertToInvoice()),
                       ToolbarAction(Icons.more_horiz, 'More',
                           onTap: () => _showMoreSheet(estimate)),
                     ],
@@ -417,6 +467,26 @@ class _PaperDoc extends StatelessWidget {
     ];
     return lines.join('\n');
   }
+
+  /// The letter-size pages, without the surrounding screen chrome — used
+  /// for printing.
+  List<Widget> printPages() => [
+        PaperPage(
+          mobile: false,
+          footer: const DocPageNote('Page 1 of 3'),
+          child: _pageOne(),
+        ),
+        PaperPage(
+          mobile: false,
+          footer: const DocPageNote('Page 2 of 3'),
+          child: _pageTwo(),
+        ),
+        PaperPage(
+          mobile: false,
+          footer: const DocPageNote('Page 3 of 3'),
+          child: _pageThree(),
+        ),
+      ];
 
   @override
   Widget build(BuildContext context) {

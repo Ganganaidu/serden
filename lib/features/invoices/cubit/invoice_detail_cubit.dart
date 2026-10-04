@@ -5,6 +5,7 @@ import '../../clients/models/client_model.dart';
 import '../../clients/repository/client_repository.dart';
 import '../../more/models/company_profile_model.dart';
 import '../../more/repository/company_profile_repository.dart';
+import '../../../shared/models/send_document_draft.dart';
 import '../models/invoice_model.dart';
 import '../repository/invoice_repository.dart';
 
@@ -51,11 +52,18 @@ class InvoiceDetailCubit extends Cubit<InvoiceDetailState> {
     );
   }
 
-  Future<void> send(int invoiceId) async {
+  /// Emails the document via POST …/send-email, then marks it sent.
+  Future<void> sendEmail(SendDocumentDraft draft) async {
     final current = _current;
     if (current == null) return;
+    final publicId = current.publicId;
+    if (publicId == null) {
+      emit(InvoiceDetailActionFailure(
+          invoice: current, message: 'This invoice cannot be sent yet.'));
+      return;
+    }
     emit(InvoiceDetailBusy(current));
-    final result = await _repository.sendInvoice(invoiceId);
+    final result = await _repository.sendInvoiceEmail(publicId, draft);
     result.fold(
       (failure) => emit(InvoiceDetailActionFailure(
           invoice: current, message: failure.message)),

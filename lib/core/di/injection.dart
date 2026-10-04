@@ -101,6 +101,7 @@ class Injection {
   static EstimateDetailCubit createEstimateDetailCubit() =>
       EstimateDetailCubit(
         repository: _estimateRepository,
+        invoiceRepository: _invoiceRepository,
         companyRepository: _companyProfileRepository,
         clientRepository: _clientRepository,
       );

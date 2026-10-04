@@ -8,6 +8,7 @@ import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../shared/widgets/paper_document.dart';
+import '../../../shared/widgets/send_document_sheet.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../cubit/invoice_detail_cubit.dart';
 import '../models/invoice_model.dart';
@@ -79,7 +80,19 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   }
 
   Future<void> _handleSend(Invoice invoice) async {
-    await context.read<InvoiceDetailCubit>().send(invoice.invoiceId);
+    final cubit = context.read<InvoiceDetailCubit>();
+    final loaded = cubit.state;
+    final client = loaded is InvoiceDetailLoaded ? loaded.client : null;
+    final company = loaded is InvoiceDetailLoaded ? loaded.company : null;
+    final draft = await showSendDocumentSheet(
+      context,
+      title: 'Send Invoice',
+      toEmail: client?.email ?? '',
+      subject: documentSubject('Invoice', invoice.number, company?.proName),
+      message: 'Thank you for your business. Please let us know if you have any questions.',
+    );
+    if (draft == null || !mounted) return;
+    cubit.sendEmail(draft);
   }
 
   Future<void> _handleMarkPaid(Invoice invoice) async {

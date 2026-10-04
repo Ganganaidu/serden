@@ -49,6 +49,8 @@ dependencies:
   url_launcher: ^6.3.2
   flutter_inappwebview: 6.2.0-beta.3
   file_picker: ^11.0.3
+  pdf: ^3.13.1
+  printing: ^5.15.1
 
 dev_dependencies:
   flutter_test:

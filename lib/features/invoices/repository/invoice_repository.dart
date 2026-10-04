@@ -7,6 +7,7 @@ import '../../../core/errors/exceptions.dart';
 import '../../../core/errors/failures.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/app_logger.dart';
+import '../../../shared/models/send_document_draft.dart';
 import '../models/invoice_model.dart';
 
 abstract class InvoiceRepository {
@@ -31,6 +32,10 @@ abstract class InvoiceRepository {
   Future<Either<Failure, void>> deleteInvoice(int invoiceId);
 
   Future<Either<Failure, void>> sendInvoice(int invoiceId);
+
+  /// Emails the invoice to the client (POST /Invoices/{publicId}/send-email).
+  Future<Either<Failure, void>> sendInvoiceEmail(
+      String invoicePublicId, SendDocumentDraft draft);
 
   Future<Either<Failure, void>> markPaid(String invoicePublicId);
 
@@ -255,6 +260,29 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
       return Left(NetworkFailure(e.message));
     } catch (e) {
       AppLogger.error('sendInvoice: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> sendInvoiceEmail(
+      String invoicePublicId, SendDocumentDraft draft) async {
+    AppLogger.api('sendInvoiceEmail: publicId=$invoicePublicId');
+    try {
+      await _apiClient.post(
+        '/Invoices/$invoicePublicId/send-email',
+        data: draft.toJson(),
+      );
+      AppLogger.api('sendInvoiceEmail: success publicId=$invoicePublicId');
+      return const Right(null);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('sendInvoiceEmail: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }
