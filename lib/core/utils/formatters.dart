@@ -19,6 +19,15 @@ class Formatters {
 
   static String dateMedium(DateTime date) => _dateMedium.format(date);
 
+  /// "January 29th 2026"
+  static String dateOrdinal(DateTime date) {
+    final d = date.day;
+    final suffix = (d >= 11 && d <= 13)
+        ? 'th'
+        : switch (d % 10) { 1 => 'st', 2 => 'nd', 3 => 'rd', _ => 'th' };
+    return '${DateFormat('MMMM').format(date)} $d$suffix ${date.year}';
+  }
+
   static String monthYear(DateTime date) => _monthYear.format(date);
 
   static String initials(String name) {

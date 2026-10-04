@@ -159,7 +159,6 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           _ => null,
         };
 
-        final isLoading = state is InvoiceDetailLoading;
         final isBusy = state is InvoiceDetailBusy;
         final errorMessage =
             state is InvoiceDetailError ? state.message : null;
@@ -184,37 +183,42 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                       ),
                   ],
                 ),
-                if (invoice != null) ...[
-                  DocumentToolbar(
-                    actions: [
-                      ToolbarAction(
-                        Icons.send_outlined,
-                        'Send',
-                        onTap: isBusy ? null : () => _handleSend(invoice),
-                      ),
-                      ToolbarAction(
-                        Icons.payments_outlined,
-                        'Payments',
-                        onTap: () => context
-                            .push('/invoices/${widget.id}/record-payment'),
-                      ),
-                      ToolbarAction(
-                        Icons.check_circle_outline,
-                        'Mark paid',
-                        onTap: (isBusy ||
-                                invoice.docStatus == DocumentStatus.paid)
-                            ? null
-                            : () => _handleMarkPaid(invoice),
-                      ),
-                      ToolbarAction(
-                        Icons.more_horiz,
-                        'More',
-                        onTap: isBusy
-                            ? null
-                            : () => _showMoreSheet(context, invoice),
-                      ),
-                    ],
-                  ),
+                DocumentToolbar(
+                  actions: [
+                    ToolbarAction(
+                      Icons.send_outlined,
+                      'Send',
+                      onTap: invoice == null || isBusy
+                          ? null
+                          : () => _handleSend(invoice),
+                    ),
+                    ToolbarAction(
+                      Icons.payments_outlined,
+                      'Payments',
+                      onTap: invoice == null
+                          ? null
+                          : () => context
+                              .push('/invoices/${widget.id}/record-payment'),
+                    ),
+                    ToolbarAction(
+                      Icons.check_circle_outline,
+                      'Mark paid',
+                      onTap: (invoice == null ||
+                              isBusy ||
+                              invoice.docStatus == DocumentStatus.paid)
+                          ? null
+                          : () => _handleMarkPaid(invoice),
+                    ),
+                    ToolbarAction(
+                      Icons.more_horiz,
+                      'More',
+                      onTap: invoice == null || isBusy
+                          ? null
+                          : () => _showMoreSheet(context, invoice),
+                    ),
+                  ],
+                ),
+                if (invoice != null)
                   StatusBand(
                     options: [
                       StatusBandOption(
@@ -229,8 +233,9 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                     onChanged: (key) {
                       if (key == 'paid' && !isBusy) _handleMarkPaid(invoice);
                     },
-                  ),
-                ],
+                  )
+                else
+                  const StatusBandSkeleton(),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: ViewToggle(
@@ -239,8 +244,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   ),
                 ),
                 Expanded(
-                  child: isLoading && invoice == null
-                      ? const Center(child: CircularProgressIndicator())
+                  child: invoice == null && errorMessage == null
+                      ? const DocumentSkeleton()
                       : errorMessage != null && invoice == null
                           ? Center(
                               child: Padding(

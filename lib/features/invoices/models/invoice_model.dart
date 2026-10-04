@@ -4,7 +4,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/status_badge.dart';
 
-enum InvoiceTab { active, overdue, paid }
+enum InvoiceTab { active, paid, draft }
 
 /// Maps the API `status` string onto [DocumentStatus].
 DocumentStatus invoiceDocStatus(String? status) {
@@ -21,14 +21,22 @@ DocumentStatus invoiceDocStatus(String? status) {
     case 'sent':
     case 'issued':
       return DocumentStatus.sent;
-    default:
+    case 'draft':
+    case null:
+    case '':
       return DocumentStatus.draft;
+    default:
+      // Any other issued state (e.g. "Unpaid", "Pending") is a live invoice,
+      // not a draft.
+      return DocumentStatus.sent;
   }
 }
 
 InvoiceTab invoiceTab(DocumentStatus status, {bool isOverdue = false}) {
   if (status == DocumentStatus.paid) return InvoiceTab.paid;
-  if (isOverdue || status == DocumentStatus.overdue) return InvoiceTab.overdue;
+  if (status == DocumentStatus.draft) return InvoiceTab.draft;
+  // Sent / viewed / partly paid / overdue all live under Active; overdue
+  // rows are flagged in red in the list.
   return InvoiceTab.active;
 }
 
@@ -555,7 +563,7 @@ class InvoiceSummary extends Equatable {
     required this.invoiceId,
     this.publicId,
     this.invoiceNumber,
-    this.clientName = 'Unnamed client',
+    this.clientName = 'No Client',
     required this.invoiceDate,
     this.daysToPay,
     this.dueDate,
@@ -574,6 +582,7 @@ class InvoiceSummary extends Equatable {
 
   DocumentStatus get docStatus => invoiceDocStatus(status);
 
+  // Overdue applies to everything but paid invoices (drafts included).
   bool get isOverdue =>
       status?.toLowerCase() == 'overdue' ||
       (dueDate != null &&
@@ -628,7 +637,7 @@ class InvoiceSummary extends Equatable {
         invoiceNumber: json['invoiceNumber']?.toString(),
         clientName: (json['clientName'] as String?)?.trim().isNotEmpty == true
             ? json['clientName'] as String
-            : 'Unnamed client',
+            : 'No Client',
         invoiceDate: DateTime.tryParse(json['invoiceDate'] as String? ?? '') ??
             DateTime.now(),
         daysToPay: json['daysToPay'] as int?,

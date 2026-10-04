@@ -32,8 +32,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
   static const _tabOrder = [
     InvoiceTab.active,
-    InvoiceTab.overdue,
     InvoiceTab.paid,
+    InvoiceTab.draft,
   ];
 
   @override
@@ -138,14 +138,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
 
         if (invoices.isEmpty) return const _InvoicesEmptyView();
 
-        final open = invoices
-            .where((i) =>
-                i.tab == InvoiceTab.active || i.tab == InvoiceTab.overdue)
-            .toList();
+        final open =
+            invoices.where((i) => i.tab == InvoiceTab.active).toList();
         final outstanding =
             open.fold<double>(0, (sum, i) => sum + i.balance);
-        final overdueAmt = invoices
-            .where((i) => i.tab == InvoiceTab.overdue)
+        final overdueAmt = open
+            .where((i) => i.isOverdue)
             .fold<double>(0, (sum, i) => sum + i.balance);
 
         return Scaffold(
@@ -187,11 +185,10 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                       tabs: [
                         PillTab('Active',
                             count: _count(invoices, InvoiceTab.active)),
-                        PillTab('Overdue',
-                            count: _count(invoices, InvoiceTab.overdue),
-                            activeColor: AppColors.redDeep),
                         PillTab('Paid',
                             count: _count(invoices, InvoiceTab.paid)),
+                        PillTab('Draft',
+                            count: _count(invoices, InvoiceTab.draft)),
                       ],
                       selectedIndex: _tabIndex,
                       onChanged: (i) => setState(() => _tabIndex = i),
@@ -200,6 +197,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                   ],
                 ),
               ),
+
               Positioned(
                 right: 16,
                 bottom: 24,
@@ -222,12 +220,10 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
       return EmptyState(
         title: searching
             ? 'No matches'
-            : (_tabIndex == 1 ? 'Nothing overdue' : 'Nothing here yet'),
+            : 'Nothing here yet',
         description: searching
             ? 'Try a different name or number.'
-            : (_tabIndex == 1
-                ? 'Nice — every client is paying on time.'
-                : 'Invoices in this state will show up here.'),
+            : 'Invoices in this state will show up here.',
       );
     }
 
@@ -292,9 +288,8 @@ class _InvoiceRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isOverdue = invoice.isOverdue;
-    final chipStatus =
-        isOverdue ? DocumentStatus.overdue : invoice.docStatus;
-    final chipLabel = isOverdue ? 'Overdue' : invoice.statusNote;
+    final chipStatus = invoice.docStatus;
+    final chipLabel = invoice.statusNote;
 
     return Material(
       color: AppColors.card,
@@ -319,33 +314,56 @@ class _InvoiceRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      invoice.clientName,
+                      '${invoice.clientName} - #${invoice.number}',
                       style: AppTextStyles.rowTitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 3),
-                    Text.rich(
-                      TextSpan(
-                        text:
-                            '${Formatters.dateShort(invoice.date)} · #${invoice.number}',
+                    Text(
+                      Formatters.dateOrdinal(invoice.date),
+                      style: AppTextStyles.caption
+                          .copyWith(color: AppColors.grayDeep),
+                    ),
+                    if (invoice.dueDate != null) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (invoice.dueNote.isNotEmpty) ...[
-                            const TextSpan(text: ' · '),
-                            TextSpan(
-                              text: invoice.dueNote,
-                              style: isOverdue
-                                  ? const TextStyle(
-                                      color: AppColors.redDeep,
-                                      fontWeight: FontWeight.w700,
-                                    )
-                                  : null,
+                          Flexible(
+                            child: Text(
+                              'Due: ${Formatters.dateMedium(invoice.dueDate!)}',
+                              style: AppTextStyles.caption.copyWith(
+                                color: isOverdue
+                                    ? AppColors.redDeep
+                                    : AppColors.grayDeep,
+                                fontWeight: isOverdue
+                                    ? FontWeight.w600
+                                    : FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          if (isOverdue) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: AppColors.redTint,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                'OVERDUE',
+                                style: AppTextStyles.chip.copyWith(
+                                  color: AppColors.redDeep,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                             ),
                           ],
                         ],
                       ),
-                      style: AppTextStyles.caption,
-                    ),
+                    ],
                     if (invoice.isPartial) ...[
                       const SizedBox(height: 8),
                       SizedBox(
@@ -380,7 +398,8 @@ class _InvoiceRow extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 5),
-                  StatusChip(status: chipStatus, label: chipLabel),
+                  if (!isOverdue)
+                    StatusChip(status: chipStatus, label: chipLabel),
                 ],
               ),
             ],

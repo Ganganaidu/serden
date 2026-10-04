@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
@@ -848,6 +849,113 @@ class ViewToggle extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Loading skeletons ───────────────────────────────────────────────────────
+
+Widget _shimmer(Widget child) => Shimmer.fromColors(
+      baseColor: AppColors.grayTint,
+      highlightColor: Colors.white,
+      child: child,
+    );
+
+Widget _bar(double height, {double? width, double radius = 6}) => Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+    );
+
+/// Placeholder for [StatusBand] while the document loads (same height).
+class StatusBandSkeleton extends StatelessWidget {
+  const StatusBandSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) => _shimmer(
+        Container(
+          height: 44,
+          width: double.infinity,
+          color: AppColors.grayTint,
+        ),
+      );
+}
+
+/// Shimmering stand-in for the paper document while it loads, so the layout
+/// under the header/toolbar doesn't jump when the content arrives.
+/// [withToggle] adds room for the Desktop/Mobile [ViewToggle].
+class DocumentSkeleton extends StatelessWidget {
+  final bool withToggle;
+  const DocumentSkeleton({super.key, this.withToggle = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return _shimmer(
+      ListView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        children: [
+          if (withToggle)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: _bar(40, radius: 12),
+            ),
+          AspectRatio(
+            aspectRatio: kPaperWidth / kPaperHeight,
+            child: Container(
+              padding: const EdgeInsets.all(22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _bar(46, width: 46, radius: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _bar(12, width: 90),
+                          const SizedBox(height: 8),
+                          _bar(12, width: 120),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  _bar(14, width: 150),
+                  const SizedBox(height: 10),
+                  _bar(12, width: 200),
+                  const SizedBox(height: 8),
+                  _bar(12, width: 170),
+                  const SizedBox(height: 32),
+                  for (var i = 0; i < 4; i++) ...[
+                    Row(
+                      children: [
+                        Expanded(child: _bar(14)),
+                        const SizedBox(width: 40),
+                        _bar(14, width: 60),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  const Spacer(),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: _bar(16, width: 140),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

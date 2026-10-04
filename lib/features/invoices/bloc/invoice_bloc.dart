@@ -118,7 +118,7 @@ class InvoiceBloc extends Bloc<InvoiceEvent, InvoicesState> {
         invoiceNumber: i.invoiceNumber,
         clientName: i.clientName?.trim().isNotEmpty == true
             ? i.clientName!
-            : 'Unnamed client',
+            : 'No Client',
         invoiceDate: i.invoiceDate,
         daysToPay: i.daysToPay,
         dueDate: i.dueDate,

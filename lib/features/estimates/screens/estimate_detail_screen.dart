@@ -224,7 +224,9 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
               behavior: SnackBarBehavior.floating,
             ),
           );
-          context.push(
+          // go (not push) so the shell switches to the Invoices tab; Back then
+          // lands on the invoice list with that tab selected.
+          context.go(
               AppRoutes.invoiceDetail.replaceFirst(':id', '${state.invoiceId}'));
         } else if (state is EstimateDetailActionSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -253,7 +255,6 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
           EstimateDetailInvoiceCreated(:final estimate) => estimate,
           _ => null,
         };
-        final isLoading = state is EstimateDetailLoading;
         final isBusy = state is EstimateDetailBusy;
         final errorMessage =
             state is EstimateDetailError ? state.message : null;
@@ -278,32 +279,41 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
                       ),
                   ],
                 ),
-                if (estimate != null) ...[
-                  DocumentToolbar(
-                    actions: [
-                      ToolbarAction(Icons.send_outlined, 'Send',
-                          onTap: () => _handleSend(estimate)),
-                      ToolbarAction(Icons.print_outlined, 'Print',
-                          onTap: () => _handlePrint(estimate)),
-                      ToolbarAction(Icons.receipt_long_outlined, 'Invoice',
-                          onTap: () => context
-                              .read<EstimateDetailCubit>()
-                              .convertToInvoice()),
-                      ToolbarAction(Icons.more_horiz, 'More',
-                          onTap: () => _showMoreSheet(estimate)),
-                    ],
-                  ),
+                DocumentToolbar(
+                  actions: [
+                    ToolbarAction(Icons.send_outlined, 'Send',
+                        onTap: estimate == null
+                            ? null
+                            : () => _handleSend(estimate)),
+                    ToolbarAction(Icons.print_outlined, 'Print',
+                        onTap: estimate == null
+                            ? null
+                            : () => _handlePrint(estimate)),
+                    ToolbarAction(Icons.receipt_long_outlined, 'Invoice',
+                        onTap: estimate == null
+                            ? null
+                            : () => context
+                                .read<EstimateDetailCubit>()
+                                .convertToInvoice()),
+                    ToolbarAction(Icons.more_horiz, 'More',
+                        onTap: estimate == null
+                            ? null
+                            : () => _showMoreSheet(estimate)),
+                  ],
+                ),
+                if (estimate != null)
                   StatusBand(
                     options: _statusOptions,
                     currentKey: _statusKey(estimate),
                     onChanged: (key) => context
                         .read<EstimateDetailCubit>()
                         .setStatus(_estimateId, key),
-                  ),
-                ],
+                  )
+                else
+                  const StatusBandSkeleton(),
                 Expanded(
-                  child: isLoading && estimate == null
-                      ? const Center(child: CircularProgressIndicator())
+                  child: estimate == null && errorMessage == null
+                      ? const DocumentSkeleton(withToggle: true)
                       : errorMessage != null && estimate == null
                           ? AppErrorWidget(
                               message: errorMessage,
