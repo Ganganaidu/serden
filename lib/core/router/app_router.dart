@@ -21,6 +21,7 @@ import '../../features/estimates/screens/estimate_detail_screen.dart';
 import '../../features/estimates/screens/estimate_list_screen.dart';
 import '../../features/estimates/screens/new_estimate_screen.dart';
 import '../../features/invoices/cubit/invoice_detail_cubit.dart';
+import '../../features/invoices/models/invoice_model.dart';
 import '../../features/invoices/screens/invoice_detail_screen.dart';
 import '../../features/invoices/screens/invoice_list_screen.dart';
 import '../../features/invoices/screens/new_invoice_screen.dart';
@@ -211,7 +212,12 @@ class AppRouter {
                   routes: [
                     GoRoute(
                       path: 'new',
-                      builder: (_, __) => const NewInvoiceScreen(),
+                      builder: (_, state) {
+                        final extra = state.extra as Map<String, dynamic>?;
+                        return NewInvoiceScreen(
+                          invoiceToEdit: extra?['invoiceToEdit'] as Invoice?,
+                        );
+                      },
                     ),
                     GoRoute(
                       path: ':id',

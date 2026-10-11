@@ -13,6 +13,10 @@ import '../utils/app_logger.dart';
 class TokenInterceptor extends Interceptor {
   final SecureStorage _storage;
 
+  /// Called after a failed refresh has wiped the stored session, so the app
+  /// can reset auth state and any in-memory user data.
+  final void Function()? onSessionExpired;
+
   /// A bare Dio with no TokenInterceptor, used only for the refresh call and
   /// the retried request — going through the main Dio here would re-enter
   /// this same interceptor and loop. PrettyDioLogger is safe to attach
@@ -22,7 +26,7 @@ class TokenInterceptor extends Interceptor {
 
   Completer<String?>? _refreshCompleter;
 
-  TokenInterceptor(this._storage)
+  TokenInterceptor(this._storage, {this.onSessionExpired})
       : _plainDio = Dio(BaseOptions(baseUrl: AppConstants.baseUrl)) {
     if (kDebugMode) {
       _plainDio.interceptors
@@ -77,6 +81,7 @@ class TokenInterceptor extends Interceptor {
         // Refresh failed (or there was nothing to refresh) — fully log out
         // so the app's redirect logic sends the user back to onboarding.
         await _storage.deleteAll();
+        onSessionExpired?.call();
       }
     }
     handler.next(err);

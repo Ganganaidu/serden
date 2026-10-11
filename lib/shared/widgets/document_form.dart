@@ -116,11 +116,15 @@ class DocumentForm extends StatefulWidget {
   /// dispatches [EstimateUpdateRequested] instead of create. Estimates only.
   final Estimate? estimateToEdit;
 
+  /// Invoice counterpart of [estimateToEdit] (invoices only).
+  final Invoice? invoiceToEdit;
+
   const DocumentForm({
     super.key,
     required this.isInvoice,
     required this.documentNumber,
     this.estimateToEdit,
+    this.invoiceToEdit,
   });
 
   @override
@@ -140,7 +144,8 @@ class _DocumentFormState extends State<DocumentForm> {
   final List<PlatformFile> _files = [];
   final _imagePicker = ImagePicker();
 
-  bool get _isEdit => widget.estimateToEdit != null;
+  bool get _isEdit =>
+      widget.estimateToEdit != null || widget.invoiceToEdit != null;
 
   // Optional adjustment rows (visible after tapping a chip).
   final Set<String> _activeAdjustments = {};
@@ -182,6 +187,11 @@ class _DocumentFormState extends State<DocumentForm> {
   @override
   void initState() {
     super.initState();
+    final inv = widget.invoiceToEdit;
+    if (inv != null) {
+      _initFromInvoice(inv);
+      return;
+    }
     final e = widget.estimateToEdit;
     if (e == null) return;
 
@@ -241,6 +251,61 @@ class _DocumentFormState extends State<DocumentForm> {
     }
   }
 
+  void _initFromInvoice(Invoice inv) {
+    if (inv.clientId != null) {
+      _selectedClient = Client(
+        clientId: inv.clientId!,
+        proId: inv.proId,
+        name: inv.clientName?.trim().isNotEmpty == true
+            ? inv.clientName!
+            : 'Client',
+      );
+    }
+
+    final items = inv.allLineItems
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    if (items.isNotEmpty) {
+      _items
+        ..clear()
+        ..addAll(items.map((li) => LineItemDraft(
+              name: li.description,
+              qty: li.quantity,
+              price: li.unitPrice,
+              existingId: li.lineItemId,
+            )));
+    }
+
+    _groupSections = inv.groupItemsIntoSections;
+    _clientSignature = inv.showClientSignature;
+    _mySignature = inv.showMySignature;
+    _notes = inv.notes;
+    _privateNotes = inv.privateNotes;
+
+    final days = inv.daysToPay;
+    if (days != null) _paymentTerms = days == 0 ? 'Due on receipt' : 'Net $days';
+
+    if ((inv.discountValue ?? 0) > 0) {
+      _activeAdjustments.add('discount');
+      _discount = inv.discountValue!;
+      _discountType = AmountType.fromApi(inv.discountType);
+    }
+    if ((inv.markupValue ?? 0) > 0) {
+      _activeAdjustments.add('markup');
+      _markup = inv.markupValue!;
+      _markupType = inv.markupType == 'F' ? MarkupType.flat : MarkupType.percent;
+    }
+    if ((inv.taxRate ?? 0) > 0) {
+      _activeAdjustments.add('tax');
+      _taxPct = inv.taxRate!;
+      _taxName = inv.taxName;
+    }
+    if ((inv.depositValue ?? 0) > 0) {
+      _activeAdjustments.add('deposit');
+      _depositValue = inv.depositValue!;
+      _depositType = AmountType.fromApi(inv.depositType);
+    }
+  }
+
   double get _subtotal =>
       _items.fold(0, (sum, item) => sum + item.total);
 
@@ -270,7 +335,7 @@ class _DocumentFormState extends State<DocumentForm> {
   }
 
   String get _navTitle {
-    if (widget.isInvoice) return 'New invoice';
+    if (widget.isInvoice) return _isEdit ? 'Edit invoice' : 'New invoice';
     return _isEdit ? 'Edit estimate' : 'New estimate';
   }
 
@@ -316,7 +381,11 @@ class _DocumentFormState extends State<DocumentForm> {
           ),
         );
       }
-      context.pop();
+      if (invoice != null && _isEdit) {
+        context.pop({'invoice': invoice});
+      } else {
+        context.pop();
+      }
     } else if (state is InvoiceMutateFailure) {
       setState(() => _submitting = false);
       if (state.limitReached) {
@@ -1629,13 +1698,21 @@ class _DocumentFormState extends State<DocumentForm> {
     required bool taxActive,
     required bool depositActive,
   }) {
+    final base = widget.invoiceToEdit;
     final invoice = Invoice(
+      invoiceId: base?.invoiceId ?? 0,
+      publicId: base?.publicId,
+      status: base?.status,
+      sentDate: base?.sentDate,
+      viewedDate: base?.viewedDate,
+      paidDate: base?.paidDate,
+      poNumber: base?.poNumber,
       proId: proId,
       clientId: _selectedClient!.clientId,
       clientName: _selectedClient!.name,
-      invoiceNumber:
-          widget.documentNumber > 0 ? widget.documentNumber.toString() : null,
-      invoiceDate: DateTime.now(),
+      invoiceNumber: base?.invoiceNumber ??
+          (widget.documentNumber > 0 ? widget.documentNumber.toString() : null),
+      invoiceDate: base?.invoiceDate ?? DateTime.now(),
       daysToPay: _daysToPay,
       groupItemsIntoSections: _groupSections,
       subtotal: _subtotal,
@@ -1659,6 +1736,7 @@ class _DocumentFormState extends State<DocumentForm> {
       lineItems: [
         for (final li in lineItems)
           InvoiceLineItem(
+            lineItemId: li.lineItemId,
             description: li.description,
             unitPrice: li.unitPrice,
             quantity: li.quantity,
@@ -1670,7 +1748,10 @@ class _DocumentFormState extends State<DocumentForm> {
     );
 
     setState(() => _submitting = true);
-    context.read<InvoiceBloc>().add(InvoiceCreateRequested(invoice));
+    final bloc = context.read<InvoiceBloc>();
+    bloc.add(base != null
+        ? InvoiceUpdateRequested(invoice)
+        : InvoiceCreateRequested(invoice));
   }
 
   Future<void> _pickPaymentTerms() async {

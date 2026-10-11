@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/loading_overlay.dart';
@@ -101,19 +102,32 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     await context.read<InvoiceDetailCubit>().markPaid(publicId);
   }
 
+  Future<void> _handleEdit(Invoice invoice) async {
+    final result = await context.push<Map<String, dynamic>>(
+      AppRoutes.newInvoice,
+      extra: {'invoiceToEdit': invoice},
+    );
+    if (!mounted) return;
+    final cubit = context.read<InvoiceDetailCubit>();
+    if (result?['invoice'] is Invoice) {
+      cubit.applyUpdate(result!['invoice'] as Invoice);
+    }
+    cubit.fetch(_invoiceId, userId: _userId);
+  }
+
   Future<void> _handleDelete(Invoice invoice) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete invoice?'),
         content: const Text(
             'This invoice will be permanently deleted and cannot be recovered.'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('Cancel')),
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(dialogContext, true),
               child: const Text('Delete',
                   style: TextStyle(color: AppColors.redDeep))),
         ],
@@ -129,7 +143,11 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     return BlocConsumer<InvoiceDetailCubit, InvoiceDetailState>(
       listener: (context, state) {
         if (state is InvoiceDetailDeleted) {
-          context.go('/invoices');
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go(AppRoutes.invoices);
+          }
         }
         if (state is InvoiceDetailActionSuccess) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -176,7 +194,7 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   actions: [
                     if (invoice != null)
                       TextButton(
-                        onPressed: isBusy ? null : () {},
+                        onPressed: isBusy ? null : () => _handleEdit(invoice),
                         style: TextButton.styleFrom(
                             foregroundColor: Colors.white),
                         child: const Text('Edit'),
@@ -295,16 +313,24 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
   void _showMoreSheet(BuildContext context, Invoice invoice) {
     showModalBottomSheet(
       context: context,
-      builder: (_) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined, color: AppColors.ink),
+              title: const Text('Edit invoice'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                _handleEdit(invoice);
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.delete_outline, color: AppColors.redDeep),
               title: const Text('Delete invoice',
                   style: TextStyle(color: AppColors.redDeep)),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(sheetContext);
                 _handleDelete(invoice);
               },
             ),

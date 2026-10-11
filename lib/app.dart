@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
@@ -24,20 +27,58 @@ class SerdenApp extends StatefulWidget {
 
 class _SerdenAppState extends State<SerdenApp> {
   late final AuthBloc _authBloc;
-  late final ClientBloc _clientBloc;
-  late final EstimateBloc _estimateBloc;
-  late final InvoiceBloc _invoiceBloc;
-  late final LeadBloc _leadBloc;
-  late final ItemsCubit _itemsCubit;
-  late final MarkupsCubit _markupsCubit;
-  late final NotificationsCubit _notificationsCubit;
-  late final ReviewsCubit _reviewsCubit;
-  late final TaxesCubit _taxesCubit;
+  late ClientBloc _clientBloc;
+  late EstimateBloc _estimateBloc;
+  late InvoiceBloc _invoiceBloc;
+  late LeadBloc _leadBloc;
+  late ItemsCubit _itemsCubit;
+  late MarkupsCubit _markupsCubit;
+  late NotificationsCubit _notificationsCubit;
+  late ReviewsCubit _reviewsCubit;
+  late TaxesCubit _taxesCubit;
+
+  GoRouter? _router;
+  StreamSubscription<AuthState>? _authSub;
+  StreamSubscription<void>? _expiredSub;
+
+  /// Bumped on every reset so the whole tree (and any screen-local state)
+  /// is rebuilt against the fresh blocs.
+  int _sessionGen = 0;
+  String? _userKey;
 
   @override
   void initState() {
     super.initState();
     _authBloc = Injection.createAuthBloc()..add(const AuthCheckRequested());
+    _createDataBlocs();
+    _authSub = _authBloc.stream.listen(_onAuthChanged);
+    _expiredSub = Injection.sessionExpired.listen((_) {
+      _authBloc.add(const AuthSignOutRequested());
+    });
+  }
+
+  /// Drops every in-memory list/detail the previous user loaded, on logout
+  /// and whenever a different user becomes authenticated.
+  void _onAuthChanged(AuthState state) {
+    if (state is AuthUnauthenticated) {
+      _userKey = null;
+      _resetSessionData();
+    } else if (state is AuthAuthenticated) {
+      final key = state.user.publicId;
+      if (_userKey != null && _userKey != key) _resetSessionData();
+      _userKey = key;
+    }
+  }
+
+  void _resetSessionData() {
+    _closeDataBlocs();
+    setState(() {
+      _createDataBlocs();
+      _sessionGen++;
+    });
+  }
+
+  void _createDataBlocs() {
     _clientBloc = Injection.createClientBloc();
     _estimateBloc = Injection.createEstimateBloc();
     _invoiceBloc = Injection.createInvoiceBloc();
@@ -49,8 +90,22 @@ class _SerdenAppState extends State<SerdenApp> {
     _taxesCubit = Injection.createTaxesCubit();
   }
 
+  void _closeDataBlocs() {
+    _clientBloc.close();
+    _estimateBloc.close();
+    _invoiceBloc.close();
+    _leadBloc.close();
+    _itemsCubit.close();
+    _markupsCubit.close();
+    _notificationsCubit.close();
+    _reviewsCubit.close();
+    _taxesCubit.close();
+  }
+
   @override
   void dispose() {
+    _authSub?.cancel();
+    _expiredSub?.cancel();
     _authBloc.close();
     _clientBloc.close();
     _estimateBloc.close();
@@ -67,6 +122,7 @@ class _SerdenAppState extends State<SerdenApp> {
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
+      key: ValueKey(_sessionGen),
       providers: [
         BlocProvider.value(value: _authBloc),
         BlocProvider.value(value: _clientBloc),
@@ -81,7 +137,7 @@ class _SerdenAppState extends State<SerdenApp> {
       ],
       child: Builder(
         builder: (context) {
-          final router = AppRouter.router(context);
+          final router = _router ??= AppRouter.router(context);
           return MaterialApp.router(
             title: 'Serden',
             theme: AppTheme.lightTheme,

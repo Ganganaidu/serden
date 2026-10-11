@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../../features/plans/cubit/membership_cubit.dart';
 import '../../features/plans/repository/subscription_repository.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
@@ -56,9 +58,17 @@ class Injection {
   static late ContactUsRepository _contactUsRepository;
   static late SubscriptionRepository _subscriptionRepository;
 
+  static final _sessionExpired = StreamController<void>.broadcast();
+
+  /// Fires when the API session could not be refreshed and was wiped.
+  static Stream<void> get sessionExpired => _sessionExpired.stream;
+
   static void init() {
     _secureStorage = SecureStorage();
-    _tokenInterceptor = TokenInterceptor(_secureStorage);
+    _tokenInterceptor = TokenInterceptor(
+      _secureStorage,
+      onSessionExpired: () => _sessionExpired.add(null),
+    );
     _apiClient = ApiClient(tokenInterceptor: _tokenInterceptor);
     _authRepository = AuthRepositoryImpl(
       apiClient: _apiClient,

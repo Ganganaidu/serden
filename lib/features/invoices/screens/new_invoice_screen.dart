@@ -4,10 +4,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/document_form.dart';
 import '../../auth/bloc/auth_bloc.dart';
+import '../models/invoice_model.dart';
 
 /// New invoice. First asks the API for the next invoice number.
 class NewInvoiceScreen extends StatefulWidget {
-  const NewInvoiceScreen({super.key});
+  final Invoice? invoiceToEdit;
+
+  const NewInvoiceScreen({super.key, this.invoiceToEdit});
 
   @override
   State<NewInvoiceScreen> createState() => _NewInvoiceScreenState();
@@ -21,6 +24,12 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
   @override
   void initState() {
     super.initState();
+    final edit = widget.invoiceToEdit;
+    if (edit != null) {
+      _documentNumber = edit.number;
+      _resolving = false;
+      return;
+    }
     _fetchNextNumber();
   }
 
@@ -50,6 +59,10 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    return DocumentForm(isInvoice: true, documentNumber: _documentNumber);
+    return DocumentForm(
+      isInvoice: true,
+      documentNumber: _documentNumber,
+      invoiceToEdit: widget.invoiceToEdit,
+    );
   }
 }

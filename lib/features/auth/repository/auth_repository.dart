@@ -132,6 +132,8 @@ class AuthRepositoryImpl implements AuthRepository {
         data: {'userName': email, 'password': password},
       );
       final data = response.data as Map<String, dynamic>;
+      // Drop anything left from a previous user (e.g. a cached proId).
+      await _storage.deleteAll();
       await _persistSession(data);
       final rawUser = UserModel.fromJson(data['user'] as Map<String, dynamic>);
       AppLogger.auth('signIn: success — userId=${rawUser.userId}');

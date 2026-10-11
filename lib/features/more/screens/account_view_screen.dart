@@ -127,6 +127,15 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
                     children: [
                       _profileCard(user, pro),
+                      const SizedBox(height: 16),
+                      BlocBuilder<MembershipCubit, MembershipState>(
+                        builder: (context, m) => MembershipCard(
+                          tier: m is MembershipLoaded
+                              ? (m.usage?.tier ?? PlanTier.basic)
+                              : null,
+                          usage: m is MembershipLoaded ? m.usage : null,
+                        ),
+                      ),
                       const SectionHeader(title: 'Account details'),
                       AppCard(
                         child: Column(
@@ -150,15 +159,6 @@ class _AccountViewScreenState extends State<AccountViewScreen> {
                               onTap: () => _openChangePassword(user),
                             ),
                           ],
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      BlocBuilder<MembershipCubit, MembershipState>(
-                        builder: (context, m) => MembershipCard(
-                          tier: m is MembershipLoaded
-                              ? (m.usage?.tier ?? PlanTier.basic)
-                              : null,
-                          usage: m is MembershipLoaded ? m.usage : null,
                         ),
                       ),
                       if (_versionLabel.isNotEmpty)

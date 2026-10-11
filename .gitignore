@@ -33,6 +33,7 @@ migrate_working_dir/
 /build/
 /coverage/
 **/ios/Runner.xcworkspace/
+**/ios/Runner.xcodeproj/
 
 # Symbolication related
 app.*.symbols
