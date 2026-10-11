@@ -85,6 +85,14 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
     return authState is AuthAuthenticated ? authState.user.proId : null;
   }
 
+  /// Signed in, but the account has no Pro profile yet (GET /Pros/user/{id}
+  /// returned 404). There is nothing to fetch, so show the first-run view
+  /// instead of waiting forever.
+  bool get _hasNoPro {
+    final authState = context.read<AuthBloc>().state;
+    return authState is AuthAuthenticated && authState.user.proId == null;
+  }
+
   List<EstimateSummary> _filtered(List<EstimateSummary> all) {
     final q = _search.trim().toLowerCase();
     return all
@@ -130,8 +138,8 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
           EstimateMutateFailure(:final estimates) => estimates,
           _ => const <EstimateSummary>[],
         };
-        final isLoading =
-            state is EstimatesLoading || state is EstimatesInitial;
+        final isLoading = !_hasNoPro &&
+            (state is EstimatesLoading || state is EstimatesInitial);
         final errorMessage = state is EstimatesError ? state.message : null;
 
         if (!isLoading &&

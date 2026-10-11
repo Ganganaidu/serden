@@ -85,6 +85,11 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
     return authState is AuthAuthenticated ? authState.user.proId : null;
   }
 
+  bool get _hasNoPro {
+    final authState = context.read<AuthBloc>().state;
+    return authState is AuthAuthenticated && authState.user.proId == null;
+  }
+
   List<InvoiceSummary> _filtered(List<InvoiceSummary> all) {
     final q = _search.trim().toLowerCase();
     return all
@@ -104,10 +109,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
   Widget build(BuildContext context) {
     return BlocBuilder<InvoiceBloc, InvoicesState>(
       builder: (context, state) {
+        // Account has no Pro profile yet — nothing to fetch, show first-run.
+        if (_hasNoPro && (state is InvoicesInitial || state is InvoicesLoading)) {
+          return const _InvoicesEmptyView();
+        }
         if (state is InvoicesInitial || state is InvoicesLoading) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return _loadingView();
         }
         if (state is InvoicesError) {
           return Scaffold(
@@ -210,6 +217,34 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
           ),
         );
       },
+    );
+  }
+
+  /// Header, tabs and nav stay visible while the first fetch is in flight.
+  Widget _loadingView() {
+    return Scaffold(
+      body: Column(
+        children: [
+          AppHeader(
+            title: 'Invoices',
+            actions: [const NotificationBellButton()],
+            bottom: HeaderSearchBar(
+              hint: 'Search client, number, or amount',
+              onChanged: (v) => setState(() => _search = v),
+            ),
+          ),
+          PillTabs(
+            tabs: const [
+              PillTab('Active', count: 0),
+              PillTab('Paid', count: 0),
+              PillTab('Draft', count: 0),
+            ],
+            selectedIndex: _tabIndex,
+            onChanged: (i) => setState(() => _tabIndex = i),
+          ),
+          const Expanded(child: Center(child: CircularProgressIndicator())),
+        ],
+      ),
     );
   }
 

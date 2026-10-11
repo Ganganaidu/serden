@@ -8,6 +8,8 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../shared/models/doc_attachment.dart';
+import '../../../shared/widgets/attachment_preview.dart';
 import '../../../shared/widgets/paper_document.dart';
 import '../../../shared/widgets/send_document_sheet.dart';
 import '../../auth/bloc/auth_bloc.dart';
@@ -299,6 +301,15 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                                         child: _pageThree(invoice)),
                                     if (invoice.notes?.isNotEmpty == true)
                                       DocNotesCard(text: invoice.notes!),
+                                    DocAttachmentsCard(
+                                      photos: [
+                                        for (final p in invoice.photos)
+                                          if (p.url != null)
+                                            DocPhotoRef(p.url!,
+                                                caption: p.caption),
+                                      ],
+                                      files: invoice.attachments,
+                                    ),
                                   ],
                                 ),
                 ),

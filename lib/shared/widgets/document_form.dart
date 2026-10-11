@@ -23,6 +23,8 @@ import '../../features/invoices/models/invoice_model.dart';
 import '../../features/items/models/item_model.dart';
 import '../../features/items/models/markup_template.dart';
 import '../../features/taxes/models/tax_model.dart';
+import '../models/doc_attachment.dart';
+import 'attachment_preview.dart';
 import 'subscription_limit_dialog.dart';
 
 /// Sentinel id returned by the tax/markup picker sheets' "Custom amount"
@@ -144,6 +146,10 @@ class _DocumentFormState extends State<DocumentForm> {
   final List<PlatformFile> _files = [];
   final _imagePicker = ImagePicker();
 
+  // Already uploaded to the document being edited (read-only preview).
+  List<DocPhotoRef> _existingPhotos = const [];
+  List<DocAttachment> _existingFiles = const [];
+
   bool get _isEdit =>
       widget.estimateToEdit != null || widget.invoiceToEdit != null;
 
@@ -194,6 +200,12 @@ class _DocumentFormState extends State<DocumentForm> {
     }
     final e = widget.estimateToEdit;
     if (e == null) return;
+
+    _existingPhotos = [
+      for (final p in e.photos)
+        if (p.url != null) DocPhotoRef(p.url!, caption: p.caption),
+    ];
+    _existingFiles = e.attachments;
 
     if (e.clientId != null) {
       _selectedClient = Client(
@@ -252,6 +264,11 @@ class _DocumentFormState extends State<DocumentForm> {
   }
 
   void _initFromInvoice(Invoice inv) {
+    _existingPhotos = [
+      for (final p in inv.photos)
+        if (p.url != null) DocPhotoRef(p.url!, caption: p.caption),
+    ];
+    _existingFiles = inv.attachments;
     if (inv.clientId != null) {
       _selectedClient = Client(
         clientId: inv.clientId!,
@@ -1097,12 +1114,16 @@ class _DocumentFormState extends State<DocumentForm> {
               children: [
                 _InnerValueRow(
                   label: 'Photos',
-                  value: _photos.isEmpty ? 'Add' : '${_photos.length}',
+                  value: _photos.isEmpty && _existingPhotos.isEmpty
+                      ? 'Add'
+                      : '${_existingPhotos.length + _photos.length}',
                   onTap: _openPhotosSheet,
                 ),
                 _InnerValueRow(
                   label: 'Files',
-                  value: _files.isEmpty ? 'Add' : '${_files.length}',
+                  value: _files.isEmpty && _existingFiles.isEmpty
+                      ? 'Add'
+                      : '${_existingFiles.length + _files.length}',
                   onTap: _openFilesSheet,
                 ),
               ],
@@ -1215,10 +1236,12 @@ class _DocumentFormState extends State<DocumentForm> {
   // ---- Photos and attachments ------------------------------------------
 
   String get _attachmentsSummary {
-    if (_photos.isEmpty && _files.isEmpty) return 'None added';
+    final photoCount = _existingPhotos.length + _photos.length;
+    final fileCount = _existingFiles.length + _files.length;
+    if (photoCount == 0 && fileCount == 0) return 'None added';
     final parts = <String>[
-      if (_photos.isNotEmpty) '${_photos.length} photo${_photos.length == 1 ? '' : 's'}',
-      if (_files.isNotEmpty) '${_files.length} file${_files.length == 1 ? '' : 's'}',
+      if (photoCount > 0) '$photoCount photo${photoCount == 1 ? '' : 's'}',
+      if (fileCount > 0) '$fileCount file${fileCount == 1 ? '' : 's'}',
     ];
     return parts.join(' · ');
   }
@@ -1308,6 +1331,8 @@ class _DocumentFormState extends State<DocumentForm> {
                     spacing: 10,
                     runSpacing: 10,
                     children: [
+                      for (final p in _existingPhotos)
+                        UploadedPhotoThumb(photo: p),
                       for (var i = 0; i < _photos.length; i++)
                         _StagedPhotoThumb(
                           file: _photos[i],
@@ -1399,7 +1424,7 @@ class _DocumentFormState extends State<DocumentForm> {
                     ),
                     const SizedBox(height: 8),
                     Flexible(
-                      child: _files.isEmpty
+                      child: _files.isEmpty && _existingFiles.isEmpty
                           ? Padding(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               child: Text('No files added yet.',
@@ -1407,10 +1432,15 @@ class _DocumentFormState extends State<DocumentForm> {
                             )
                           : ListView.separated(
                               shrinkWrap: true,
-                              itemCount: _files.length,
+                              itemCount: _existingFiles.length + _files.length,
                               separatorBuilder: (_, __) =>
                                   const Divider(height: 1, color: AppColors.line),
-                              itemBuilder: (context, i) {
+                              itemBuilder: (context, idx) {
+                                if (idx < _existingFiles.length) {
+                                  return UploadedFileRow(
+                                      file: _existingFiles[idx]);
+                                }
+                                final i = idx - _existingFiles.length;
                                 final f = _files[i];
                                 return Padding(
                                   padding:

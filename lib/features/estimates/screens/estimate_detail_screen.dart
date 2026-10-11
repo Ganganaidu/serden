@@ -12,6 +12,7 @@ import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../shared/services/document_printer.dart';
+import '../../../shared/widgets/attachment_preview.dart';
 import '../../../shared/widgets/paper_document.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../clients/models/client_model.dart';
@@ -529,6 +530,7 @@ class _PaperDoc extends StatelessWidget {
           child: _pageThree(),
         ),
         DocNotesCard(text: _notesText),
+        DocAttachmentsCard(files: estimate.attachments),
       ],
     );
   }

@@ -141,17 +141,15 @@ class DocLogoBlock extends StatelessWidget {
     final markSize = mobile ? 52.0 : 66.0;
 
     if (logoUrl != null && logoUrl!.isNotEmpty) {
-      return ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: markSize + 20,
-          maxWidth: mobile ? 200 : 240,
-        ),
-        child: Image.network(
-          logoUrl!,
-          alignment: Alignment.centerLeft,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _lettermark(markSize),
-        ),
+      // Size is applied to the image itself (not a wrapping ConstrainedBox) so
+      // the taller lettermark fallback isn't squeezed into the logo's height.
+      return Image.network(
+        logoUrl!,
+        width: mobile ? 200 : 240,
+        height: markSize + 20,
+        alignment: Alignment.centerLeft,
+        fit: BoxFit.contain,
+        errorBuilder: (_, __, ___) => _lettermark(markSize),
       );
     }
     return _lettermark(markSize);

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../shared/models/doc_attachment.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/status_badge.dart';
@@ -289,7 +290,9 @@ class Estimate extends Equatable {
   final List<EstimateSection> sections;
   final List<EstimateLineItem> lineItems;
   final List<EstimatePhoto> photos;
-  final int attachmentCount;
+  final List<DocAttachment> attachments;
+
+  int get attachmentCount => attachments.length;
   final String? proName;
   final String? proEmail;
   final String? proAddress;
@@ -338,7 +341,7 @@ class Estimate extends Equatable {
     this.sections = const [],
     this.lineItems = const [],
     this.photos = const [],
-    this.attachmentCount = 0,
+    this.attachments = const [],
     this.proName,
     this.proEmail,
     this.proAddress,
@@ -423,7 +426,7 @@ class Estimate extends Equatable {
                 ?.map((e) => EstimatePhoto.fromJson(e as Map<String, dynamic>))
                 .toList() ??
             const [],
-        attachmentCount: (json['attachments'] as List<dynamic>?)?.length ?? 0,
+        attachments: DocAttachment.listFromJson(json['attachments']),
         proName: json['proName'] as String?,
         proEmail: json['proEmail'] as String?,
         proAddress: json['proAddress'] as String?,
@@ -513,7 +516,7 @@ class Estimate extends Equatable {
         sections: sections,
         lineItems: lineItems,
         photos: photos,
-        attachmentCount: attachmentCount,
+        attachments: attachments,
         proName: proName,
         proEmail: proEmail,
         proAddress: proAddress,
@@ -535,6 +538,8 @@ class Estimate extends Equatable {
         isApproved,
         sections,
         lineItems,
+        photos,
+        attachments,
       ];
 }
 
