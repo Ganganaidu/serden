@@ -670,7 +670,7 @@ class DocumentToolbar extends StatelessWidget {
   }
 }
 
-enum StatusBandKind { pending, positive, negative }
+enum StatusBandKind { pending, info, positive, negative }
 
 class StatusBandOption {
   final String key;
@@ -708,12 +708,14 @@ class StatusBand extends StatelessWidget {
 
   (Color, Color) _colors(StatusBandKind kind) => switch (kind) {
         StatusBandKind.pending => (AppColors.orangeTint, AppColors.orangeDeep),
+        StatusBandKind.info => (AppColors.skyTint, AppColors.skyDeep),
         StatusBandKind.positive => (AppColors.greenTint, AppColors.greenDeep),
         StatusBandKind.negative => (AppColors.redTint, AppColors.redDeep),
       };
 
   Color _dotColor(StatusBandKind kind) => switch (kind) {
         StatusBandKind.pending => AppColors.orange500,
+        StatusBandKind.info => AppColors.sky500,
         StatusBandKind.positive => AppColors.greenDeep,
         StatusBandKind.negative => AppColors.redDeep,
       };

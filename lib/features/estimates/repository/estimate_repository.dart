@@ -42,6 +42,10 @@ abstract class EstimateRepository {
 
   /// Uploads a document (pdf/doc/xls/csv/etc.) to the estimate.
   Future<Either<Failure, void>> uploadFile(String estimatePublicId, String filePath);
+
+  /// Uploads a photo to one line item (POST /estimates/{publicId}/lineitems/{lineItemId}/photos).
+  Future<Either<Failure, void>> uploadLineItemPhoto(
+      String estimatePublicId, int lineItemId, String filePath);
 }
 
 class EstimateRepositoryImpl implements EstimateRepository {
@@ -320,6 +324,29 @@ class EstimateRepositoryImpl implements EstimateRepository {
       return Left(NetworkFailure(e.message));
     } catch (e) {
       AppLogger.error('uploadFile: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> uploadLineItemPhoto(
+      String estimatePublicId, int lineItemId, String filePath) async {
+    AppLogger.api('uploadLineItemPhoto: estimatePublicId=$estimatePublicId lineItem=$lineItemId');
+    try {
+      final formData =
+          FormData.fromMap({'file': await MultipartFile.fromFile(filePath)});
+      await _apiClient.post(
+          '/estimates/$estimatePublicId/lineitems/$lineItemId/photos',
+          data: formData);
+      return const Right(null);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('uploadLineItemPhoto: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }

@@ -22,6 +22,9 @@ class AppColors {
   static const Color orangeDeep = Color(0xFF9C4A15); // text on orangeTint
 
   // Reds
+  static const Color skyTint = Color(0xFFE3F1FB); // active/info bg
+  static const Color skyDeep = Color(0xFF1F6A9A); // text on skyTint
+  static const Color sky500 = Color(0xFF4AA3DF); // info dot
   static const Color redTint = Color(0xFFFBE9E7);
   static const Color redDeep = Color(0xFFA33A2A);
 

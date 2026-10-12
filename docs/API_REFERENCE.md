@@ -1,7 +1,7 @@
 # Serden API Reference
 
 **Base URL:** `https://apiservice.lemonglacier-62b8e153.westus2.azurecontainerapps.io/api`  
-**Total operations:** 267
+**Total operations:** 277
 
 > Field notation: type *(null)* = nullable, **req** = required in body
 
@@ -15,11 +15,13 @@
 - [EstimateFiles](#estimatefiles)
 - [EstimateLineItemPhotos](#estimatelineitemphotos)
 - [EstimatePhotos](#estimatephotos)
+- [EstimateSignatures](#estimatesignatures)
 - [Estimates](#estimates)
 - [Insights](#insights)
 - [InvoiceFiles](#invoicefiles)
 - [InvoiceLineItemPhotos](#invoicelineitemphotos)
 - [InvoicePhotos](#invoicephotos)
+- [InvoiceSignatures](#invoicesignatures)
 - [Invoices](#invoices)
 - [LineItems](#lineitems)
 - [LoginHistory](#loginhistory)
@@ -791,6 +793,89 @@ Schema: `EmailSignup`
 
 **Responses:**
 - `200`: OK
+
+---
+
+## EstimateSignatures
+
+> `kind` identifies which signature on the estimate (the app uses client/owner values — verify exact accepted strings against the backend).
+
+### `POST /api/estimates/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Request body:** (multipart/form-data)
+  - `file`: string/binary
+
+**Responses:**
+- `200`: OK → `SignatureViewModel`
+  - `documentType`: string *(null)*
+  - `publicId`: string/uuid
+  - `kind`: string *(null)*
+  - `fileName`: string *(null)*
+  - `fileUrl`: string *(null)*
+  - `signedDate`: string/date-time *(null)*
+
+---
+
+### `PUT /api/estimates/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Request body:** (multipart/form-data)
+  - `file`: string/binary
+
+**Responses:**
+- `200`: OK → `SignatureViewModel`
+  - `documentType`: string *(null)*
+  - `publicId`: string/uuid
+  - `kind`: string *(null)*
+  - `fileName`: string *(null)*
+  - `fileUrl`: string *(null)*
+  - `signedDate`: string/date-time *(null)*
+
+---
+
+### `GET /api/estimates/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Responses:**
+- `200`: OK → `SignatureViewModel`
+  - `documentType`: string *(null)*
+  - `publicId`: string/uuid
+  - `kind`: string *(null)*
+  - `fileName`: string *(null)*
+  - `fileUrl`: string *(null)*
+  - `signedDate`: string/date-time *(null)*
+
+---
+
+### `DELETE /api/estimates/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Responses:**
+- `200`: OK
+
+---
+
+### `GET /api/estimates/{publicId}/signatures/{kind}/image`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Responses:**
+- `200`: OK (returns the signature image)
 
 ---
 
@@ -1736,6 +1821,89 @@ Schema: `InsightViewModel`
 
 **Responses:**
 - `200`: OK
+
+---
+
+## InvoiceSignatures
+
+> `kind` identifies which signature on the invoice (the app uses client/owner values — verify exact accepted strings against the backend).
+
+### `POST /api/invoices/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Request body:** (multipart/form-data)
+  - `file`: string/binary
+
+**Responses:**
+- `200`: OK → `SignatureViewModel`
+  - `documentType`: string *(null)*
+  - `publicId`: string/uuid
+  - `kind`: string *(null)*
+  - `fileName`: string *(null)*
+  - `fileUrl`: string *(null)*
+  - `signedDate`: string/date-time *(null)*
+
+---
+
+### `PUT /api/invoices/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Request body:** (multipart/form-data)
+  - `file`: string/binary
+
+**Responses:**
+- `200`: OK → `SignatureViewModel`
+  - `documentType`: string *(null)*
+  - `publicId`: string/uuid
+  - `kind`: string *(null)*
+  - `fileName`: string *(null)*
+  - `fileUrl`: string *(null)*
+  - `signedDate`: string/date-time *(null)*
+
+---
+
+### `GET /api/invoices/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Responses:**
+- `200`: OK → `SignatureViewModel`
+  - `documentType`: string *(null)*
+  - `publicId`: string/uuid
+  - `kind`: string *(null)*
+  - `fileName`: string *(null)*
+  - `fileUrl`: string *(null)*
+  - `signedDate`: string/date-time *(null)*
+
+---
+
+### `DELETE /api/invoices/{publicId}/signatures/{kind}`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Responses:**
+- `200`: OK
+
+---
+
+### `GET /api/invoices/{publicId}/signatures/{kind}/image`
+
+**Parameters:**
+- `publicId` (path): string/uuid **req**
+- `kind` (path): string **req**
+
+**Responses:**
+- `200`: OK (returns the signature image)
 
 ---
 

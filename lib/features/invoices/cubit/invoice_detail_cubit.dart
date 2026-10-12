@@ -76,6 +76,40 @@ class InvoiceDetailCubit extends Cubit<InvoiceDetailState> {
     );
   }
 
+  /// Applies a status-band choice. `paid` uses the dedicated mark-paid
+  /// endpoint; `draft` / `active` have none, so they PUT the invoice with
+  /// `status` set (same approach as estimates).
+  Future<void> setStatus(String key) async {
+    final current = _current;
+    if (current == null) return;
+    if (key == 'paid') {
+      final publicId = current.publicId;
+      if (publicId == null) return;
+      return markPaid(publicId);
+    }
+
+    final status = key == 'draft' ? 'draft' : 'sent';
+    if (invoiceTab(current.docStatus) ==
+        (key == 'draft' ? InvoiceTab.draft : InvoiceTab.active)) {
+      return;
+    }
+
+    emit(InvoiceDetailBusy(current));
+    final result =
+        await _repository.updateInvoice(current.copyWith(status: status));
+    result.fold(
+      (failure) => emit(InvoiceDetailActionFailure(
+          invoice: current, message: failure.message)),
+      (updated) {
+        // PUT may echo back a trimmed body — keep the richer local copy.
+        final merged = current.copyWith(status: updated.status ?? status);
+        emit(InvoiceDetailActionSuccess(
+            invoice: merged, message: 'Status updated'));
+        emit(_loaded(merged));
+      },
+    );
+  }
+
   Future<void> markPaid(String invoicePublicId) async {
     final current = _current;
     if (current == null) return;

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/di/injection.dart';
+import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
 import '../../core/utils/formatters.dart';
@@ -79,7 +80,38 @@ IconData iconForFileExtension(String? extension) {
 }
 
 /// Editable line item on the new estimate / invoice form.
+/// A named group of line items (estimate / invoice "section").
+class SectionDraft {
+  final TextEditingController name;
+
+  /// Id of the existing API section, when editing. 0 for new sections.
+  int existingId;
+
+  /// UI only: collapsed sections show a one-line summary.
+  bool collapsed = false;
+
+  SectionDraft({String name = '', this.existingId = 0})
+      : name = TextEditingController(text: name);
+}
+
 class LineItemDraft {
+  static int _nextUid = 0;
+
+  /// Stable identity for widget keys (rows can be reordered).
+  final int uid = _nextUid++;
+
+  /// The section this row belongs to; null means the first section.
+  SectionDraft? section;
+
+  /// Long description / notes shown under this item on the document.
+  String notes;
+
+  /// Photos picked this session — uploaded after the document is saved.
+  final List<XFile> photos = [];
+
+  /// Photo URLs already saved on the API (edit mode; read-only here).
+  List<String> existingPhotoUrls;
+
   String name;
   int qty;
   double price;
@@ -102,9 +134,28 @@ class LineItemDraft {
     this.price = 0,
     this.existingId = 0,
     this.catalogItemId,
+    this.section,
+    this.notes = '',
+    this.existingPhotoUrls = const [],
   });
 
-  double get total => qty * price;
+  static const int maxPhotos = 4;
+  int get photoCount => existingPhotoUrls.length + photos.length;
+
+  /// The item's own markup (set from the catalog). When present it applies to
+  /// this row only and takes priority over the document-level markup.
+  ItemMarkup markup = ItemMarkup.none;
+
+  double get baseTotal => qty * price;
+
+  double get markupAmount => !markup.hasMarkup
+      ? 0
+      : markup.type == MarkupType.percent
+          ? baseTotal * markup.rate / 100
+          : markup.rate;
+
+  /// Line amount including the item's own markup.
+  double get total => baseTotal + markupAmount;
 }
 
 /// Shared "New estimate" / "New invoice" form. The two designs are
@@ -177,6 +228,10 @@ class _DocumentFormState extends State<DocumentForm> {
   int _markupRev = 0;
 
   bool _groupSections = false;
+
+  /// Sections shown when "Group items into sections" is on. There is always
+  /// at least one; each line item points at one via [LineItemDraft.section].
+  final List<SectionDraft> _sections = [SectionDraft()];
   bool _paypalEnabled = true;
   bool _coverFee = false;
   bool _autoInvoice = false;
@@ -217,6 +272,14 @@ class _DocumentFormState extends State<DocumentForm> {
       );
     }
 
+    _loadSections(
+      [for (final sec in e.sections) (sec.sectionId, sec.name, sec.sortOrder)],
+      {
+        for (final sec in e.sections)
+          for (final li in sec.lineItems)
+            if (li.lineItemId != 0) li.lineItemId: sec.sectionId,
+      },
+    );
     final items = e.allLineItems..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     if (items.isNotEmpty) {
       _items
@@ -227,10 +290,17 @@ class _DocumentFormState extends State<DocumentForm> {
               price: li.unitPrice,
               existingId: li.lineItemId,
               catalogItemId: li.catalogLineItemId,
-            )));
+              section: _sectionFor(li.sectionId, li.lineItemId),
+              notes: li.notes ?? '',
+              existingPhotoUrls: [
+                for (final p in li.photos)
+                  if (p.url != null) p.url!,
+              ],
+            )..markup = ItemMarkup.fromApi(null, li.markupType, li.markupValue)));
     }
 
-    _groupSections = e.groupItemsIntoSections;
+    _groupSections = e.groupItemsIntoSections ||
+        e.sections.any((sec) => sec.name.trim().isNotEmpty);
     _clientSignature = e.showClientSignature;
     _mySignature = e.showMySignature;
     _notes = e.notes;
@@ -263,6 +333,51 @@ class _DocumentFormState extends State<DocumentForm> {
     }
   }
 
+  // lineItemId → sectionId for items nested inside a section.
+  Map<int, int> _nestedSectionOf = {};
+  SectionDraft? _looseSection;
+
+  /// Draft → sortOrder it was saved with; used to find the created line-item
+  /// ids when uploading per-item photos.
+  final Map<LineItemDraft, int> _savedOrder = {};
+
+  /// Replaces [_sections] with the document's saved sections (id, name,
+  /// sortOrder), ordered. [nestedItemSection] maps line-item ids that came
+  /// nested inside a section to that section's id.
+  void _loadSections(
+    List<(int, String, int)> saved,
+    Map<int, int> nestedItemSection,
+  ) {
+    _nestedSectionOf = nestedItemSection;
+    _looseSection = null;
+    for (final sec in _sections) {
+      sec.name.dispose();
+    }
+    _sections.clear();
+    final ordered = [...saved]..sort((a, b) => a.$3.compareTo(b.$3));
+    for (final (id, name, _) in ordered) {
+      _sections.add(SectionDraft(name: name, existingId: id));
+    }
+    if (_sections.isEmpty) _sections.add(SectionDraft());
+  }
+
+  /// Which section a loaded line item belongs to. Items with no section while
+  /// named sections exist go to a trailing unnamed group (saved as loose).
+  SectionDraft? _sectionFor(int? sectionId, int lineItemId) {
+    final id = _nestedSectionOf[lineItemId] ?? sectionId;
+    if (id != null) {
+      for (final sec in _sections) {
+        if (sec.existingId == id) return sec;
+      }
+    }
+    if (!_sections.any((sec) => sec.existingId != 0)) return null;
+    if (_looseSection == null) {
+      _looseSection = SectionDraft();
+      _sections.add(_looseSection!);
+    }
+    return _looseSection;
+  }
+
   void _initFromInvoice(Invoice inv) {
     _existingPhotos = [
       for (final p in inv.photos)
@@ -279,6 +394,14 @@ class _DocumentFormState extends State<DocumentForm> {
       );
     }
 
+    _loadSections(
+      [for (final sec in inv.sections) (sec.sectionId, sec.name, sec.sortOrder)],
+      {
+        for (final sec in inv.sections)
+          for (final li in sec.lineItems)
+            if (li.lineItemId != 0) li.lineItemId: sec.sectionId,
+      },
+    );
     final items = inv.allLineItems
       ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     if (items.isNotEmpty) {
@@ -289,10 +412,17 @@ class _DocumentFormState extends State<DocumentForm> {
               qty: li.quantity,
               price: li.unitPrice,
               existingId: li.lineItemId,
-            )));
+              section: _sectionFor(li.sectionId, li.lineItemId),
+              notes: li.notes ?? '',
+              existingPhotoUrls: [
+                for (final p in li.photos)
+                  if (p.url != null) p.url!,
+              ],
+            )..markup = ItemMarkup.fromApi(null, li.markupType, li.markupValue)));
     }
 
-    _groupSections = inv.groupItemsIntoSections;
+    _groupSections = inv.groupItemsIntoSections ||
+        inv.sections.any((sec) => sec.name.trim().isNotEmpty);
     _clientSignature = inv.showClientSignature;
     _mySignature = inv.showMySignature;
     _notes = inv.notes;
@@ -326,6 +456,10 @@ class _DocumentFormState extends State<DocumentForm> {
   double get _subtotal =>
       _items.fold(0, (sum, item) => sum + item.total);
 
+  /// Document-level markup skips rows that carry their own markup.
+  double get _markupBase => _items.fold(
+      0, (sum, item) => item.markup.hasMarkup ? sum : sum + item.total);
+
   double get _total {
     final discountRaw =
         _activeAdjustments.contains('discount') ? _discount : 0.0;
@@ -334,7 +468,7 @@ class _DocumentFormState extends State<DocumentForm> {
         : discountRaw;
     final markupRaw = _activeAdjustments.contains('markup') ? _markup : 0.0;
     final markup = _markupType == MarkupType.percent
-        ? _subtotal * markupRaw / 100
+        ? _markupBase * markupRaw / 100
         : markupRaw;
     final taxPct = _activeAdjustments.contains('tax') ? _taxPct : 0.0;
     final base = (_subtotal - discount + markup).clamp(0, double.infinity);
@@ -349,6 +483,14 @@ class _DocumentFormState extends State<DocumentForm> {
       return 'Total (USD) · ${Formatters.currency(deposit)} deposit due';
     }
     return 'Total (USD)';
+  }
+
+  @override
+  void dispose() {
+    for (final sec in _sections) {
+      sec.name.dispose();
+    }
+    super.dispose();
   }
 
   String get _navTitle {
@@ -384,6 +526,10 @@ class _DocumentFormState extends State<DocumentForm> {
       if (invoice?.publicId != null &&
           (_photos.isNotEmpty || _files.isNotEmpty)) {
         failedUploads = await _uploadStagedAttachments(invoice!.publicId!);
+      }
+      if (invoice?.publicId != null) {
+        failedUploads +=
+            await _uploadLineItemPhotos(invoice!.publicId!, invoice.invoiceId);
       }
       if (!context.mounted) return;
       setState(() => _submitting = false);
@@ -426,6 +572,10 @@ class _DocumentFormState extends State<DocumentForm> {
       if (estimate?.publicId != null &&
           (_photos.isNotEmpty || _files.isNotEmpty)) {
         failedUploads = await _uploadStagedAttachments(estimate!.publicId!);
+      }
+      if (estimate?.publicId != null) {
+        failedUploads += await _uploadLineItemPhotos(
+            estimate!.publicId!, estimate.estimateId);
       }
       if (!context.mounted) return;
       setState(() => _submitting = false);
@@ -497,128 +647,629 @@ class _DocumentFormState extends State<DocumentForm> {
 
   // ---- Line items -----------------------------------------------------
 
+  SectionDraft _sectionOf(LineItemDraft item) => item.section ?? _sections.first;
+
+  List<LineItemDraft> _itemsOf(SectionDraft section) =>
+      [for (final it in _items) if (_sectionOf(it) == section) it];
+
+  static const _sectionBg = Color(0xFFF1EFEA);
+
   Widget _lineItemsCard() {
-    return AppCard(
-      child: Column(
-        children: [
-          if (_groupSections)
-            Container(
-              color: AppColors.page,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              child: TextField(
-                style: AppTextStyles.labelMedium.copyWith(fontSize: 13.5),
-                decoration: InputDecoration(
-                  hintText: 'Section name — e.g. Kitchen remodel',
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 9),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(9),
-                    borderSide: const BorderSide(color: AppColors.inkFaint),
+    return Column(
+      children: [
+        AppCard(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Group items into sections',
+                          style: AppTextStyles.rowTitle.copyWith(fontSize: 14.5)),
+                      const SizedBox(height: 2),
+                      Text('Organize big jobs into labeled phases.',
+                          style: AppTextStyles.caption
+                              .copyWith(fontSize: 12, height: 1.45)),
+                    ],
                   ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Switch(
+                  value: _groupSections,
+                  onChanged: (v) => setState(() => _groupSections = v),
+                ),
+              ],
             ),
-          for (var i = 0; i < _items.length; i++) _lineItemRow(i),
-          _AddRow(
-            icon: Icons.add,
-            label: 'Add line item',
-            showBottomBorder: true,
-            onTap: () => setState(() => _items.add(LineItemDraft())),
           ),
-          _InnerToggleRow(
-            title: 'Group items into sections',
-            subtitle: 'Organize big jobs into labeled phases.',
-            value: _groupSections,
-            onChanged: (v) => setState(() => _groupSections = v),
+        ),
+        const SizedBox(height: 12),
+        if (_groupSections) ...[
+          for (final section in _sections)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _sectionCard(section),
+            ),
+          AppCard(
+            child: _AddRow(
+              icon: Icons.segment,
+              label: 'Add section',
+              onTap: () => setState(() => _sections.add(SectionDraft())),
+            ),
+          ),
+        ] else
+          AppCard(
+            child: Column(
+              children: [
+                _reorderableItems(_items),
+                _AddRow(
+                  icon: Icons.add,
+                  label: 'Add line item',
+                  onTap: () => setState(() => _items.add(LineItemDraft())),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _sectionCard(SectionDraft section) {
+    final items = _itemsOf(section);
+    final total = items.fold<double>(0, (t, i) => t + i.total);
+    final count = items.length;
+    final countLabel =
+        count == 0 ? 'No items yet' : '$count item${count == 1 ? '' : 's'}';
+    final name = section.name.text.trim();
+    final firstName =
+        items.map((i) => i.name.trim()).firstWhere((n) => n.isNotEmpty, orElse: () => '');
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: _sectionBg,
+            padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+            child: Row(
+              children: [
+                IconButton(
+                  tooltip: section.collapsed ? 'Expand' : 'Collapse',
+                  onPressed: () =>
+                      setState(() => section.collapsed = !section.collapsed),
+                  icon: AnimatedRotation(
+                    turns: section.collapsed ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 220),
+                    child: const Icon(Icons.keyboard_arrow_up,
+                        color: AppColors.ink),
+                  ),
+                ),
+                Expanded(
+                  child: section.collapsed
+                      ? InkWell(
+                          onTap: () => setState(() => section.collapsed = false),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(name.isEmpty ? 'Untitled section' : name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.headingMedium
+                                      .copyWith(fontSize: 18)),
+                              Text(
+                                  firstName.isEmpty
+                                      ? countLabel
+                                      : '$countLabel · $firstName',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.caption),
+                            ],
+                          ),
+                        )
+                      : TextField(
+                          controller: section.name,
+                          onChanged: (_) => setState(() {}),
+                          textCapitalization: TextCapitalization.sentences,
+                          style: AppTextStyles.headingMedium
+                              .copyWith(fontSize: 17),
+                          decoration: InputDecoration(
+                            hintText: 'Section name — e.g. Kitchen',
+                            isDense: true,
+                            filled: true,
+                            fillColor: AppColors.card,
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 12),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide:
+                                  const BorderSide(color: AppColors.line),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(
+                                  color: AppColors.greenDeep, width: 1.5),
+                            ),
+                          ),
+                        ),
+                ),
+                if (section.collapsed)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: Text(Formatters.currency(total),
+                        style: AppTextStyles.rowAmount.copyWith(fontSize: 16)),
+                  ),
+                if (_sections.length > 1)
+                  PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_horiz, color: AppColors.ink),
+                  onSelected: (v) {
+                    final i = _sections.indexOf(section);
+                    setState(() {
+                      if (v == 'up' && i > 0) {
+                        _sections.removeAt(i);
+                        _sections.insert(i - 1, section);
+                      } else if (v == 'down' && i < _sections.length - 1) {
+                        _sections.removeAt(i);
+                        _sections.insert(i + 1, section);
+                      } else if (v == 'remove') {
+                        _items.removeWhere((it) => _sectionOf(it) == section);
+                        _sections.remove(section);
+                        if (_items.isEmpty) _items.add(LineItemDraft());
+                      }
+                    });
+                  },
+                  itemBuilder: (_) => [
+                    if (_sections.indexOf(section) > 0)
+                      const PopupMenuItem(value: 'up', child: Text('Move up')),
+                    if (_sections.indexOf(section) < _sections.length - 1)
+                      const PopupMenuItem(
+                          value: 'down', child: Text('Move down')),
+                    if (_sections.length > 1)
+                      const PopupMenuItem(
+                          value: 'remove', child: Text('Remove section')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 250),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: section.collapsed
+                ? const SizedBox(width: double.infinity)
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(
+                        color: AppColors.page,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 9),
+                        decoration: null,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(countLabel, style: AppTextStyles.caption),
+                            Text('Section total ${Formatters.currency(total)}',
+                                style: AppTextStyles.caption.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.inkSoft)),
+                          ],
+                        ),
+                      ),
+                      _reorderableItems(items),
+                      InkWell(
+                        onTap: () => setState(
+                            () => _items.add(LineItemDraft(section: section))),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 32,
+                                height: 32,
+                                decoration: BoxDecoration(
+                                  color: AppColors.greenTint,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: const Icon(Icons.add,
+                                    size: 16, color: AppColors.greenDeep),
+                              ),
+                              const SizedBox(width: 11),
+                              Expanded(
+                                child: Text(
+                                  name.isEmpty
+                                      ? 'Add line item'
+                                      : 'Add line item to $name',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppTextStyles.rowTitle.copyWith(
+                                      fontSize: 14.5,
+                                      color: AppColors.greenDeep),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _lineItemRow(int index) {
-    final item = _items[index];
+  /// Line-item rows for [group] with drag-to-reorder (within the group).
+  Widget _reorderableItems(List<LineItemDraft> group) {
+    return ReorderableListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      buildDefaultDragHandles: false,
+      itemCount: group.length,
+      onReorderItem: (oldIndex, newIndex) {
+        setState(() {
+          // Reorder the group, then write it back into the same slots of the
+          // flat list so other sections are unaffected.
+          final slots = [for (final it in group) _items.indexOf(it)]..sort();
+          final reordered = [...group];
+          reordered.insert(newIndex, reordered.removeAt(oldIndex));
+          for (var k = 0; k < slots.length; k++) {
+            _items[slots[k]] = reordered[k];
+          }
+        });
+      },
+      itemBuilder: (context, k) => KeyedSubtree(
+        key: ValueKey('row-${group[k].uid}'),
+        child: _lineItemRow(group[k], k),
+      ),
+    );
+  }
+
+  Widget _lineItemRow(LineItemDraft item, int dragIndex) {
     return Container(
       decoration: const BoxDecoration(
+        color: AppColors.card,
         border: Border(bottom: BorderSide(color: AppColors.line)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(8, 12, 14, 14),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  key: ValueKey('name-$index-${item.rev}'),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ReorderableDragStartListener(
+                index: dragIndex,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                  child: Icon(Icons.drag_indicator,
+                      size: 20, color: AppColors.inkFaint),
+                ),
+              ),
+              Expanded(
+                child: TextFormField(
+                  key: ValueKey('name-${item.uid}-${item.rev}'),
                   initialValue: item.name,
-                  onChanged: (v) => item.name = v,
-                  style: AppTextStyles.rowTitle.copyWith(fontSize: 14.5),
+                  onChanged: (v) => setState(() => item.name = v),
+                  textCapitalization: TextCapitalization.sentences,
+                  style: AppTextStyles.rowTitle
+                      .copyWith(fontSize: 16, fontWeight: FontWeight.w700),
                   decoration: const InputDecoration(
                     hintText: 'Item or service name',
                     isDense: true,
                     filled: false,
-                    contentPadding: EdgeInsets.symmetric(vertical: 2),
+                    contentPadding: EdgeInsets.symmetric(vertical: 4),
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                   ),
                 ),
-                const SizedBox(height: 6),
-                Wrap(
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  runSpacing: 6,
-                  children: [
-                    _numField(
-                      initial: item.qty.toString(),
-                      onChanged: (v) => setState(
-                          () => item.qty = int.tryParse(v)?.abs() ?? 0),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 6),
-                      child: Text('×', style: AppTextStyles.caption),
-                    ),
-                    _numField(
-                      key: ValueKey('price-$index-${item.rev}'),
-                      initial: item.price == 0 ? '' : item.price.toString(),
-                      hintText: '\$0.00',
-                      prefixText: '\$',
-                      onChanged: (v) => setState(
-                          () => item.price = double.tryParse(v)?.abs() ?? 0),
-                    ),
-                    const SizedBox(width: 8),
-                    _ChipButton(
-                      icon: Icons.list_alt_outlined,
-                      label: 'Item list',
-                      onTap: () => _pickCatalogItem(index),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
+              ),
+              const SizedBox(width: 8),
               Text(Formatters.currency(item.total),
-                  style: AppTextStyles.rowAmount.copyWith(fontSize: 14.5)),
-              const SizedBox(height: 4),
+                  style: AppTextStyles.rowAmount.copyWith(fontSize: 16)),
+              const SizedBox(width: 6),
               InkWell(
-                onTap: () => setState(() => _items.removeAt(index)),
+                onTap: () => setState(() => _items.remove(item)),
                 borderRadius: BorderRadius.circular(6),
                 child: const Padding(
-                  padding: EdgeInsets.all(4),
+                  padding: EdgeInsets.all(6),
                   child: Icon(Icons.delete_outline,
-                      size: 16, color: AppColors.inkFaint),
+                      size: 18, color: AppColors.inkSoft),
                 ),
               ),
             ],
           ),
+          Padding(
+            padding: const EdgeInsets.only(left: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 6),
+                _notesBlock(item),
+                const SizedBox(height: 12),
+                Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.end,
+                  runSpacing: 8,
+                  children: [
+                    _labeled(
+                      'QTY',
+                      _numField(
+                        initial: item.qty.toString(),
+                        onChanged: (v) => setState(
+                            () => item.qty = int.tryParse(v)?.abs() ?? 0),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(8, 0, 8, 8),
+                      child: Text('×', style: AppTextStyles.caption),
+                    ),
+                    _labeled(
+                      'RATE',
+                      _numField(
+                        key: ValueKey('price-${item.uid}-${item.rev}'),
+                        initial: item.price == 0 ? '' : item.price.toString(),
+                        hintText: '\$0.00',
+                        prefixText: '\$',
+                        onChanged: (v) => setState(
+                            () => item.price = double.tryParse(v)?.abs() ?? 0),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 1),
+                      child: _ChipButton(
+                        icon: Icons.list_alt_outlined,
+                        label: 'Item list',
+                        onTap: () => _pickCatalogItem(_items.indexOf(item)),
+                      ),
+                    ),
+                  ],
+                ),
+                if (item.markup.hasMarkup) ...[
+                  const SizedBox(height: 10),
+                  _markupPill(item),
+                ],
+                const SizedBox(height: 12),
+                _photosBlock(item),
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  /// Shows the catalog item's own markup; tapping ✕ drops it from this row.
+  Widget _markupPill(LineItemDraft item) {
+    final m = item.markup;
+    final label = (m.name ?? '').trim().isEmpty ? 'Markup' : m.name!.trim();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+      decoration: BoxDecoration(
+        color: AppColors.orangeTint,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              '$label ${m.displayRate} · +${Formatters.currency(item.markupAmount)}',
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.bodySmall.copyWith(
+                  fontWeight: FontWeight.w700, color: AppColors.orangeDeep),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => setState(() => item.markup = ItemMarkup.none),
+            borderRadius: BorderRadius.circular(12),
+            child: const Padding(
+              padding: EdgeInsets.all(3),
+              child: Icon(Icons.close, size: 14, color: AppColors.orangeDeep),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _labeled(String label, Widget field) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: AppTextStyles.caption.copyWith(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.6,
+                  color: AppColors.inkSoft)),
+          const SizedBox(height: 4),
+          field,
+        ],
+      );
+
+  // ---- Line-item description ------------------------------------------
+
+  Future<void> _editNotes(LineItemDraft item) async {
+    final result = await context.push<String>(
+      AppRoutes.descriptionEditor,
+      extra: {
+        'itemName': item.name,
+        'text': item.notes,
+        'documentLabel': widget.isInvoice ? 'invoice' : 'estimate',
+      },
+    );
+    if (result != null && mounted) setState(() => item.notes = result);
+  }
+
+  Widget _notesBlock(LineItemDraft item) {
+    final text = item.notes.trim();
+    if (text.isEmpty) {
+      return InkWell(
+        onTap: () => _editNotes(item),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            color: AppColors.page,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.line),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.notes, size: 18, color: AppColors.inkSoft),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text('Add description or notes (optional)',
+                    style: AppTextStyles.bodySmall
+                        .copyWith(color: AppColors.inkSoft)),
+              ),
+              const Icon(Icons.open_in_full,
+                  size: 16, color: AppColors.inkSoft),
+            ],
+          ),
+        ),
+      );
+    }
+    final lines = '\n'.allMatches(text).length + 1;
+    final long = lines > 3 || text.length > 170;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => _editNotes(item),
+          child: Text(
+            text,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: AppTextStyles.bodyMedium
+                .copyWith(fontSize: 14.5, height: 1.45, color: AppColors.inkSoft),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Material(
+          color: AppColors.greenTint,
+          borderRadius: BorderRadius.circular(20),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () => _editNotes(item),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(long ? 'Read all · $lines lines' : 'Edit description',
+                      style: AppTextStyles.bodySmall.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.greenDeep)),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right,
+                      size: 16, color: AppColors.greenDeep),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---- Line-item photos -------------------------------------------------
+
+  Future<void> _addLineItemPhoto(LineItemDraft item) async {
+    if (item.photoCount >= LineItemDraft.maxPhotos) return;
+    final source = await _showPhotoSourceSheet();
+    if (source == null) return;
+    final file = await _imagePicker.pickImage(source: source, imageQuality: 85);
+    if (file == null || !mounted) return;
+    setState(() => item.photos.add(file));
+  }
+
+  Widget _photosBlock(LineItemDraft item) {
+    final count = item.photoCount;
+    if (count == 0) {
+      return _ChipButton(
+        icon: Icons.photo_camera_outlined,
+        label: 'Photos 0/${LineItemDraft.maxPhotos}',
+        onTap: () => _addLineItemPhoto(item),
+      );
+    }
+
+    Widget thumb(Widget image, {VoidCallback? onRemove}) => Stack(
+          clipBehavior: Clip.none,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(width: 72, height: 72, child: image),
+            ),
+            if (onRemove != null)
+              Positioned(
+                top: -6,
+                right: -6,
+                child: GestureDetector(
+                  onTap: onRemove,
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: const BoxDecoration(
+                        color: AppColors.ink, shape: BoxShape.circle),
+                    child: const Icon(Icons.close,
+                        size: 13, color: Colors.white),
+                  ),
+                ),
+              ),
+          ],
+        );
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        for (final url in item.existingPhotoUrls)
+          thumb(Image.network(url,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(
+                  color: AppColors.grayTint,
+                  child: const Icon(Icons.image_outlined,
+                      color: AppColors.inkSoft)))),
+        for (final file in item.photos)
+          thumb(
+            Image.file(File(file.path),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                    color: AppColors.grayTint,
+                    child: const Icon(Icons.image_outlined,
+                        color: AppColors.inkSoft))),
+            onRemove: () => setState(() => item.photos.remove(file)),
+          ),
+        if (count < LineItemDraft.maxPhotos)
+          InkWell(
+            onTap: () => _addLineItemPhoto(item),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.line),
+              ),
+              child: const Icon(Icons.photo_camera_outlined,
+                  color: AppColors.inkSoft),
+            ),
+          ),
+        Text('$count of ${LineItemDraft.maxPhotos} photos',
+            style: AppTextStyles.caption),
+      ],
     );
   }
 
@@ -1538,6 +2189,52 @@ class _DocumentFormState extends State<DocumentForm> {
     return failures;
   }
 
+  /// Uploads staged per-line-item photos. The save response doesn't reliably
+  /// carry line-item ids, so the document is re-fetched and items matched by
+  /// the sortOrder they were saved with.
+  Future<int> _uploadLineItemPhotos(String publicId, int docId) async {
+    final pending = [
+      for (final it in _items)
+        if (it.photos.isNotEmpty && _savedOrder.containsKey(it)) it,
+    ];
+    if (pending.isEmpty) return 0;
+
+    final saved = <int, int>{}; // sortOrder → lineItemId
+    if (widget.isInvoice) {
+      final r = await Injection.invoiceRepository.fetchInvoiceDetail(docId);
+      r.fold((_) {}, (inv) {
+        for (final li in inv.allLineItems) {
+          saved[li.sortOrder] = li.lineItemId;
+        }
+      });
+    } else {
+      final r = await Injection.estimateRepository.fetchEstimateDetail(docId);
+      r.fold((_) {}, (est) {
+        for (final li in est.allLineItems) {
+          saved[li.sortOrder] = li.lineItemId;
+        }
+      });
+    }
+
+    var failures = 0;
+    for (final it in pending) {
+      final lineItemId = saved[_savedOrder[it]];
+      if (lineItemId == null) {
+        failures += it.photos.length;
+        continue;
+      }
+      for (final photo in it.photos) {
+        final r = widget.isInvoice
+            ? await Injection.invoiceRepository
+                .uploadLineItemPhoto(publicId, lineItemId, photo.path)
+            : await Injection.estimateRepository
+                .uploadLineItemPhoto(publicId, lineItemId, photo.path);
+        r.fold((_) => failures++, (_) {});
+      }
+    }
+    return failures;
+  }
+
   // ---- Notes ------------------------------------------------------------
 
   String get _notesSummary {
@@ -1609,6 +2306,12 @@ class _DocumentFormState extends State<DocumentForm> {
       draft.name = picked.name;
       if (picked.unitPrice != null) draft.price = picked.unitPrice!;
       draft.catalogItemId = picked.itemId;
+      // The catalog item's own description and markup win over what the row
+      // already had; without them the row keeps its notes and has no markup.
+      if ((picked.description ?? '').trim().isNotEmpty) {
+        draft.notes = picked.description!.trim();
+      }
+      draft.markup = picked.markup;
       draft.rev++;
     });
   }
@@ -1633,20 +2336,57 @@ class _DocumentFormState extends State<DocumentForm> {
     final base = widget.estimateToEdit;
     final estimateDate = base?.estimateDate ?? DateTime.now();
 
-    final lineItems = <EstimateLineItem>[];
-    for (var i = 0; i < _items.length; i++) {
-      final it = _items[i];
-      if (it.name.trim().isEmpty && it.price == 0) continue;
-      lineItems.add(EstimateLineItem(
-        lineItemId: it.existingId,
-        catalogLineItemId: it.catalogItemId,
-        description: it.name.trim(),
-        unitPrice: it.price,
-        quantity: it.qty,
-        total: it.total,
-        sortOrder: i,
-        isTaxable: _activeAdjustments.contains('tax'),
-      ));
+    // Group the rows by section. A named section (grouping on) becomes an
+    // API section; unnamed groups are sent as loose line items. A section
+    // that already exists on the API is referenced by id (flat line items
+    // carry `sectionId`, matching the GET shape); a new one has its line items
+    // nested inside it.
+    var order = 0;
+    _savedOrder.clear();
+    final lineItems = <EstimateLineItem>[]; // top-level line items
+    final sections = <EstimateSection>[];
+    for (final sec in _sections) {
+      final name = _groupSections ? sec.name.text.trim() : '';
+      final rows = [
+        for (final it in _items)
+          if (_sectionOf(it) == sec &&
+              !(it.name.trim().isEmpty && it.price == 0))
+            it,
+      ];
+      if (rows.isEmpty) continue;
+      final named = name.isNotEmpty;
+      final existing = named && sec.existingId != 0;
+      final built = [
+        for (final it in rows)
+          EstimateLineItem(
+            lineItemId: it.existingId,
+            sectionId: existing ? sec.existingId : null,
+            catalogLineItemId: it.catalogItemId,
+            description: it.name.trim(),
+            // Clearing the text on a saved item sends '' so the API drops it.
+            notes: it.notes.trim().isNotEmpty
+                ? it.notes
+                : (it.existingId != 0 ? '' : null),
+            unitPrice: it.price,
+            quantity: it.qty,
+            total: it.total,
+            sortOrder: _savedOrder[it] = order++,
+            isTaxable: _activeAdjustments.contains('tax'),
+            markupType: it.markup.hasMarkup ? it.markup.apiType : null,
+            markupValue: it.markup.hasMarkup ? it.markup.rate : null,
+          ),
+      ];
+      final nest = named && !existing;
+      if (named) {
+        sections.add(EstimateSection(
+          sectionId: sec.existingId,
+          name: name,
+          sortOrder: sections.length,
+          subtotal: built.fold<double>(0, (t, li) => t + li.total),
+          lineItems: nest ? built : const [],
+        ));
+      }
+      if (!nest) lineItems.addAll(built);
     }
 
     final markupActive =
@@ -1661,6 +2401,7 @@ class _DocumentFormState extends State<DocumentForm> {
       _submitInvoice(
         proId: proId,
         lineItems: lineItems,
+        sections: sections,
         markupActive: markupActive,
         discountActive: discountActive,
         taxActive: taxActive,
@@ -1706,7 +2447,7 @@ class _DocumentFormState extends State<DocumentForm> {
       isApproved: base?.isApproved,
       isActive: true,
       lineItems: lineItems,
-      sections: const [],
+      sections: sections,
     );
 
     setState(() => _submitting = true);
@@ -1723,12 +2464,26 @@ class _DocumentFormState extends State<DocumentForm> {
   void _submitInvoice({
     required int proId,
     required List<EstimateLineItem> lineItems,
+    required List<EstimateSection> sections,
     required bool markupActive,
     required bool discountActive,
     required bool taxActive,
     required bool depositActive,
   }) {
     final base = widget.invoiceToEdit;
+    InvoiceLineItem toItem(EstimateLineItem li) => InvoiceLineItem(
+          lineItemId: li.lineItemId,
+          sectionId: li.sectionId,
+          description: li.description,
+          notes: li.notes,
+          markupType: li.markupType,
+          markupValue: li.markupValue,
+          unitPrice: li.unitPrice,
+          quantity: li.quantity,
+          total: li.total,
+          sortOrder: li.sortOrder,
+          isTaxable: li.isTaxable,
+        );
     final invoice = Invoice(
       invoiceId: base?.invoiceId ?? 0,
       publicId: base?.publicId,
@@ -1763,16 +2518,15 @@ class _DocumentFormState extends State<DocumentForm> {
       showMySignature: _mySignature,
       notes: _notes,
       privateNotes: _privateNotes,
-      lineItems: [
-        for (final li in lineItems)
-          InvoiceLineItem(
-            lineItemId: li.lineItemId,
-            description: li.description,
-            unitPrice: li.unitPrice,
-            quantity: li.quantity,
-            total: li.total,
-            sortOrder: li.sortOrder,
-            isTaxable: li.isTaxable,
+      lineItems: lineItems.map(toItem).toList(),
+      sections: [
+        for (final sec in sections)
+          InvoiceSection(
+            sectionId: sec.sectionId,
+            name: sec.name,
+            sortOrder: sec.sortOrder,
+            subtotal: sec.subtotal,
+            lineItems: sec.lineItems.map(toItem).toList(),
           ),
       ],
     );
@@ -1934,7 +2688,6 @@ class _AddRow extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool showChevron;
-  final bool showBottomBorder;
   final VoidCallback onTap;
 
   const _AddRow({
@@ -1942,7 +2695,6 @@ class _AddRow extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.showChevron = false,
-    this.showBottomBorder = false,
   });
 
   @override
@@ -1950,11 +2702,6 @@ class _AddRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(
-          border: showBottomBorder
-              ? const Border(bottom: BorderSide(color: AppColors.line))
-              : null,
-        ),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(
           children: [

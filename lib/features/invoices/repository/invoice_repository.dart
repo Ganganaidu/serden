@@ -56,6 +56,10 @@ abstract class InvoiceRepository {
 
   Future<Either<Failure, void>> uploadFile(
       String invoicePublicId, String filePath);
+
+  /// Uploads a photo to one line item (POST /invoices/{publicId}/lineitems/{lineItemId}/photos).
+  Future<Either<Failure, void>> uploadLineItemPhoto(
+      String invoicePublicId, int lineItemId, String filePath);
 }
 
 class InvoiceRepositoryImpl implements InvoiceRepository {
@@ -415,6 +419,29 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
       return Left(NetworkFailure(e.message));
     } catch (e) {
       AppLogger.error('uploadFile: unexpected — $e');
+      return const Left(UnexpectedFailure());
+    }
+  }
+
+  @override
+  Future<Either<Failure, void>> uploadLineItemPhoto(
+      String invoicePublicId, int lineItemId, String filePath) async {
+    AppLogger.api('uploadLineItemPhoto: invoicePublicId=$invoicePublicId lineItem=$lineItemId');
+    try {
+      final formData =
+          FormData.fromMap({'file': await MultipartFile.fromFile(filePath)});
+      await _apiClient.post(
+          '/invoices/$invoicePublicId/lineitems/$lineItemId/photos',
+          data: formData);
+      return const Right(null);
+    } on UnauthorizedException catch (e) {
+      return Left(UnauthorizedFailure(e.message));
+    } on ServerException catch (e) {
+      return Left(ServerFailure(e.message, statusCode: e.statusCode));
+    } on NetworkException catch (e) {
+      return Left(NetworkFailure(e.message));
+    } catch (e) {
+      AppLogger.error('uploadLineItemPhoto: unexpected — $e');
       return const Left(UnexpectedFailure());
     }
   }

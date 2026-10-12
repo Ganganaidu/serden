@@ -42,45 +42,35 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     context.read<InvoiceDetailCubit>().fetch(_invoiceId, userId: _userId);
   }
 
+  // Same three buckets as the list tabs; each choice is saved to the API
+  // (see InvoiceDetailCubit.setStatus).
   static const _statusOptions = [
     StatusBandOption(
-      key: 'unpaid',
-      bandLabel: 'Unpaid · Due upon receipt',
-      menuLabel: 'Unpaid',
+      key: 'draft',
+      bandLabel: 'Draft',
+      menuLabel: 'Draft',
       kind: StatusBandKind.pending,
     ),
     StatusBandOption(
+      key: 'active',
+      bandLabel: 'Active',
+      menuLabel: 'Active',
+      kind: StatusBandKind.info,
+    ),
+    StatusBandOption(
       key: 'paid',
-      bandLabel: 'Paid in full',
+      bandLabel: 'Paid',
       menuLabel: 'Mark as paid',
       kind: StatusBandKind.positive,
     ),
-    StatusBandOption(
-      key: 'overdue',
-      bandLabel: 'Overdue',
-      menuLabel: 'Overdue',
-      kind: StatusBandKind.negative,
-    ),
   ];
 
-  String _statusKey(Invoice invoice) {
-    switch (invoice.docStatus) {
-      case DocumentStatus.paid:
-        return 'paid';
-      case DocumentStatus.overdue:
-        return 'overdue';
-      default:
-        return 'unpaid';
-    }
-  }
-
-  String _dueBandLabel(Invoice invoice) {
-    final d = invoice.dueDate;
-    if (invoice.docStatus == DocumentStatus.paid) return 'Paid in full';
-    if (invoice.docStatus == DocumentStatus.overdue) return 'Overdue';
-    if (d != null) return 'Due ${Formatters.dateShort(d)}';
-    return 'Due upon receipt';
-  }
+  String _statusKey(Invoice invoice) =>
+      switch (invoiceTab(invoice.docStatus)) {
+        InvoiceTab.paid => 'paid',
+        InvoiceTab.draft => 'draft',
+        InvoiceTab.active => 'active',
+      };
 
   Future<void> _handleSend(Invoice invoice) async {
     final cubit = context.read<InvoiceDetailCubit>();
@@ -240,18 +230,12 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                 ),
                 if (invoice != null)
                   StatusBand(
-                    options: [
-                      StatusBandOption(
-                        key: 'unpaid',
-                        bandLabel: _dueBandLabel(invoice),
-                        menuLabel: 'Unpaid',
-                        kind: StatusBandKind.pending,
-                      ),
-                      ..._statusOptions.skip(1),
-                    ],
+                    options: _statusOptions,
                     currentKey: _statusKey(invoice),
                     onChanged: (key) {
-                      if (key == 'paid' && !isBusy) _handleMarkPaid(invoice);
+                      if (!isBusy) {
+                        context.read<InvoiceDetailCubit>().setStatus(key);
+                      }
                     },
                   )
                 else
@@ -443,12 +427,23 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
             ],
           ),
         DocDescriptionLabel(mobile: m),
-        ...invoice.allLineItems.map((item) => DocSection(
+        if (_hasSections(invoice))
+          for (final g in _groupedSections(invoice))
+            DocSection(
               mobile: m,
-              title: item.description,
-              amount: Formatters.currency(item.lineTotal),
-              body: item.notes != null ? [Text(item.notes!)] : [],
-            )),
+              title: g.title,
+              amount: invoice.showSectionTotals
+                  ? Formatters.currency(g.amount)
+                  : '',
+              body: _sectionBody(invoice, g.items, m),
+            )
+        else
+          ...invoice.allLineItems.map((item) => DocSection(
+                mobile: m,
+                title: item.description,
+                amount: Formatters.currency(item.lineTotal),
+                body: item.notes != null ? [Text(item.notes!)] : [],
+              )),
         if (invoice.allLineItems.isEmpty)
           DocSection(
             mobile: m,
@@ -458,6 +453,93 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           ),
       ],
     );
+  }
+
+  bool _hasSections(Invoice invoice) =>
+      invoice.sections.any((s) => s.name.trim().isNotEmpty);
+
+  /// The API returns every line item flat (keyed by `sectionId`) and
+  /// `section.lineItems` is usually empty — regroup under the named sections.
+  List<({String title, double amount, List<InvoiceLineItem> items})>
+      _groupedSections(Invoice invoice) {
+    final flat = invoice.lineItems;
+    final result =
+        <({String title, double amount, List<InvoiceLineItem> items})>[];
+    final consumed = <InvoiceLineItem>{};
+
+    for (final s in invoice.sections) {
+      final items = s.lineItems.isNotEmpty
+          ? s.lineItems
+          : flat
+              .where((li) => li.sectionId != null && li.sectionId == s.sectionId)
+              .toList();
+      consumed.addAll(items);
+      result.add((
+        title: s.name.trim().isEmpty ? 'Section' : s.name.trim(),
+        amount: s.subtotal > 0
+            ? s.subtotal
+            : items.fold<double>(0, (t, li) => t + li.lineTotal),
+        items: items,
+      ));
+    }
+
+    final leftover = flat.where((li) => !consumed.contains(li)).toList();
+    if (leftover.isNotEmpty) {
+      result.add((
+        title: 'Additional items',
+        amount: leftover.fold<double>(0, (t, li) => t + li.lineTotal),
+        items: leftover,
+      ));
+    }
+    return result;
+  }
+
+  List<Widget> _sectionBody(
+      Invoice invoice, List<InvoiceLineItem> items, bool m) {
+    if (items.isEmpty) return [Text('—', style: docStyle(size: m ? 15 : 13.5))];
+    final out = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      final li = items[i];
+      if (i > 0) out.add(const SizedBox(height: 16));
+      final meta = [
+        if (invoice.showQuantity) '${li.quantity}',
+        if (invoice.showRate)
+          '${invoice.showQuantity ? '× ' : ''}${Formatters.currency(li.unitPrice)}',
+      ].join(' ');
+      out.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              li.description.trim().isEmpty ? 'Item' : li.description.trim(),
+              style: docStyle(
+                size: m ? 15.5 : 14,
+                weight: FontWeight.w600,
+                color: AppColors.docInk,
+                height: 1.4,
+              ),
+            ),
+          ),
+          if (meta.isNotEmpty) ...[
+            const SizedBox(width: 10),
+            Text(meta, style: docStyle(size: m ? 14 : 12.5)),
+          ],
+          if (invoice.showItemTotals) ...[
+            const SizedBox(width: 12),
+            Text(Formatters.currency(li.lineTotal),
+                style: docStyle(size: m ? 15 : 13.5, color: AppColors.docInk)),
+          ],
+        ],
+      ));
+      if ((li.notes ?? '').trim().isNotEmpty) {
+        out.add(Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(li.notes!.trim(),
+              style: docStyle(size: m ? 14.5 : 13, height: 1.6)),
+        ));
+      }
+    }
+    return out;
   }
 
   Widget _pageTwo(Invoice invoice) {

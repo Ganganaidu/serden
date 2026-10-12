@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../shared/widgets/description_editor_screen.dart';
 import '../../features/plans/cubit/membership_cubit.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/auth/screens/email_verification_screen.dart';
@@ -88,6 +89,7 @@ abstract class AppRoutes {
   static const about = '/more/settings/about';
 
   static const choosePlan = '/choose-plan';
+  static const descriptionEditor = '/description-editor';
   static const notifications = '/notifications';
   static const taxes = '/more/taxes';
   static const markups = '/more/markups';
@@ -154,6 +156,19 @@ class AppRouter {
         GoRoute(
           path: AppRoutes.notifications,
           builder: (_, __) => const NotificationsScreen(),
+        ),
+
+        // Long line-item description editor (full-screen, returns the text)
+        GoRoute(
+          path: AppRoutes.descriptionEditor,
+          builder: (_, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? const {};
+            return DescriptionEditorScreen(
+              itemName: extra['itemName'] as String? ?? '',
+              initialText: extra['text'] as String? ?? '',
+              documentLabel: extra['documentLabel'] as String? ?? 'estimate',
+            );
+          },
         ),
 
         // Plan selection (full-screen)
