@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:shimmer/shimmer.dart';
 
 import '../../core/theme/app_colors.dart';
@@ -567,6 +570,192 @@ class DocSignatureLine extends StatelessWidget {
       ],
     );
   }
+}
+
+/// ImageProvider for a stored signature — an http(s) URL, a `data:` URI, or
+/// raw base64. Null when [data] is empty/undecodable.
+ImageProvider? signatureImage(String? data) {
+  final v = data?.trim();
+  if (v == null || v.isEmpty) return null;
+  if (v.startsWith('http')) return NetworkImage(v);
+  try {
+    final b64 = v.startsWith('data:') ? v.substring(v.indexOf(',') + 1) : v;
+    return MemoryImage(base64Decode(b64));
+  } catch (_) {
+    return null;
+  }
+}
+
+/// One signer's block on the acceptance page: a dashed "Tap to sign" pad until
+/// signed, then the signature image over a rule with the signer and date.
+/// With a null [onSign] (print) an unsigned block is a plain blank line.
+class DocSignatureBlock extends StatelessWidget {
+  /// Uppercase role label, e.g. "Client" / "Company".
+  final String role;
+  final String name;
+  final String? signatureData;
+  final DateTime? signedDate;
+  final String hint;
+  final VoidCallback? onSign;
+
+  const DocSignatureBlock({
+    super.key,
+    required this.role,
+    required this.name,
+    this.signatureData,
+    this.signedDate,
+    required this.hint,
+    this.onSign,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final image = signatureImage(signatureData);
+    final signed = image != null;
+    final labelStyle = docStyle(
+        size: 11,
+        weight: FontWeight.w700,
+        color: AppColors.inkSoft,
+        height: 1.2,
+        letterSpacing: 0.8);
+    final nameStyle = docStyle(
+        size: 13, weight: FontWeight.w700, color: AppColors.docInk, height: 1.2);
+
+    final header = Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(role.toUpperCase(), style: labelStyle),
+        if (!signed || onSign == null)
+          Flexible(
+            child: Text(name,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: nameStyle),
+          )
+        else
+          PopupMenuButton<String>(
+            padding: EdgeInsets.zero,
+            icon: const Icon(Icons.more_horiz,
+                size: 20, color: AppColors.inkSoft),
+            onSelected: (_) => onSign!(),
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'resign', child: Text('Sign again')),
+            ],
+          ),
+      ],
+    );
+
+    if (signed) {
+      final when = signedDate != null
+          ? 'Signed ${DateFormat('MMM d, y · h:mm a').format(signedDate!.toLocal())}'
+          : 'Signed';
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          Container(
+            height: 84,
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.only(top: 10, bottom: 4),
+            decoration: const BoxDecoration(
+              border: Border(
+                  bottom: BorderSide(color: AppColors.docInk, width: 1.5)),
+            ),
+            child: Image(
+              image: image,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Flexible(child: Text(name, style: nameStyle)),
+              const SizedBox(width: 8),
+              Text(when, style: docStyle(size: 12, height: 1.2)),
+            ],
+          ),
+        ],
+      );
+    }
+
+    if (onSign == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          const SizedBox(height: 8),
+          const DocSignatureLine(label: 'Signature · Date'),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header,
+        const SizedBox(height: 10),
+        GestureDetector(
+          onTap: onSign,
+          behavior: HitTestBehavior.opaque,
+          child: CustomPaint(
+            painter: _DashedRRectPainter(),
+            child: Container(
+              height: 112,
+              width: double.infinity,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.page,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.edit_outlined,
+                      size: 20, color: AppColors.primary),
+                  const SizedBox(height: 6),
+                  Text('Tap to sign',
+                      style: docStyle(
+                          size: 14,
+                          weight: FontWeight.w800,
+                          color: AppColors.primary,
+                          height: 1.2)),
+                  const SizedBox(height: 4),
+                  Text(hint, style: docStyle(size: 12, height: 1.2)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text('Date · Not signed', style: docStyle(size: 12.5, height: 1.2)),
+      ],
+    );
+  }
+}
+
+class _DashedRRectPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.inkFaint
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(
+          Offset.zero & size, const Radius.circular(14)));
+    for (final metric in path.computeMetrics()) {
+      var d = 0.0;
+      while (d < metric.length) {
+        canvas.drawPath(metric.extractPath(d, d + 4), paint);
+        d += 7;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter old) => false;
 }
 
 /// Notes card under the document pages.

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../shared/widgets/description_editor_screen.dart';
+import '../../shared/widgets/signature_pad_screen.dart';
 import '../../features/plans/cubit/membership_cubit.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
 import '../../features/auth/screens/email_verification_screen.dart';
@@ -47,7 +48,6 @@ import '../../features/more/screens/more_screen.dart';
 import '../../features/more/screens/my_account_screen.dart';
 import '../../features/more/screens/reviews_screen.dart';
 import '../../features/more/screens/markups_screen.dart';
-import '../../features/more/screens/settings_screen.dart';
 import '../../features/notifications/screens/notifications_screen.dart';
 import '../../features/plans/screens/choose_plan_screen.dart';
 import '../../features/taxes/screens/taxes_screen.dart';
@@ -80,16 +80,16 @@ abstract class AppRoutes {
 
   static const more = '/more';
   static const itemForm = '/more/items/form';
-  static const settings = '/more/settings';
-  static const myAccount = '/more/settings/account';
+  static const myAccount = '/more/my-account';
   static const accountView = '/more/account';
   static const companyProfile = '/more/company-profile';
   static const reviews = '/more/reviews';
   static const items = '/more/items';
-  static const about = '/more/settings/about';
+  static const about = '/more/about';
 
   static const choosePlan = '/choose-plan';
   static const descriptionEditor = '/description-editor';
+  static const signaturePad = '/signature-pad';
   static const notifications = '/notifications';
   static const taxes = '/more/taxes';
   static const markups = '/more/markups';
@@ -167,6 +167,20 @@ class AppRouter {
               itemName: extra['itemName'] as String? ?? '',
               initialText: extra['text'] as String? ?? '',
               documentLabel: extra['documentLabel'] as String? ?? 'estimate',
+            );
+          },
+        ),
+
+        // Signature capture (full-screen, returns PNG bytes)
+        GoRoute(
+          path: AppRoutes.signaturePad,
+          builder: (_, state) {
+            final extra = state.extra as Map<String, dynamic>? ?? const {};
+            return SignaturePadScreen(
+              title: extra['title'] as String? ?? 'Signature',
+              subtitle: extra['subtitle'] as String? ?? '',
+              initialName: extra['name'] as String? ?? '',
+              consentTemplate: extra['consent'] as String? ?? '',
             );
           },
         ),
@@ -329,21 +343,15 @@ class AppRouter {
                   builder: (_, __) => const MoreScreen(),
                   routes: [
                     GoRoute(
-                      path: 'settings',
-                      builder: (_, __) => const SettingsScreen(),
-                      routes: [
-                        GoRoute(
-                          path: 'account',
-                          builder: (_, __) => BlocProvider<MyAccountCubit>(
-                            create: (_) => Injection.createMyAccountCubit(),
-                            child: const MyAccountScreen(),
-                          ),
-                        ),
-                        GoRoute(
-                          path: 'about',
-                          builder: (_, __) => const AboutScreen(),
-                        ),
-                      ],
+                      path: 'my-account',
+                      builder: (_, __) => BlocProvider<MyAccountCubit>(
+                        create: (_) => Injection.createMyAccountCubit(),
+                        child: const MyAccountScreen(),
+                      ),
+                    ),
+                    GoRoute(
+                      path: 'about',
+                      builder: (_, __) => const AboutScreen(),
                     ),
                     GoRoute(
                       path: 'account',

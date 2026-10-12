@@ -9,9 +9,11 @@ import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/status_badge.dart';
 import '../../../shared/models/doc_attachment.dart';
+import '../../../shared/models/doc_signature.dart';
 import '../../../shared/widgets/attachment_preview.dart';
 import '../../../shared/widgets/paper_document.dart';
 import '../../../shared/widgets/send_document_sheet.dart';
+import '../../../shared/widgets/signature_pad_screen.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../cubit/invoice_detail_cubit.dart';
 import '../models/invoice_model.dart';
@@ -128,6 +130,26 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
     if (confirmed == true && mounted) {
       await context.read<InvoiceDetailCubit>().delete(invoice.invoiceId);
     }
+  }
+
+  Future<void> _handleSign(Invoice invoice, SignatureKind kind) async {
+    final isClient = kind == SignatureKind.client;
+    final png = await captureSignature(
+      context,
+      title: isClient ? 'Client signature' : 'Company signature',
+      subtitle:
+          'Invoice #${invoice.number} · ${Formatters.currency(invoice.total)}',
+      name: (isClient ? invoice.clientName : invoice.proName)?.trim() ?? '',
+      consent: isClient
+          ? 'By tapping Save, {name} acknowledges invoice #${invoice.number} '
+              'and its payment terms, and agrees this electronic signature is '
+              'as valid as a handwritten one.'
+          : 'By tapping Save, {name} confirms invoice #${invoice.number}, and '
+              'agrees this electronic signature is as valid as a handwritten '
+              'one.',
+    );
+    if (png == null || !mounted) return;
+    context.read<InvoiceDetailCubit>().saveSignature(kind, png);
   }
 
   @override
@@ -572,7 +594,8 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
                   DocTotalRow(
                       mobile: m,
                       label: invoice.taxName ?? 'Tax',
-                      value: '${invoice.taxRate!.toStringAsFixed(2)}%'),
+                      value: '${invoice.taxRate!.toStringAsFixed(2)}%'
+                          ' (${Formatters.currency(invoice.total - invoice.total / (1 + invoice.taxRate! / 100))})'),
                 DocTotalRow(
                     mobile: m,
                     label: 'Total',
@@ -644,6 +667,35 @@ class _InvoiceDetailScreenState extends State<InvoiceDetailScreen> {
           'Thank you for your business.',
           mobile: m,
         ),
+        if (invoice.showClientSignature || invoice.showMySignature) ...[
+          DocTermsTitle('Acknowledgement', mobile: m),
+          if (invoice.showClientSignature)
+            DocSignatureBlock(
+              role: 'Client',
+              name: (invoice.clientName ?? '').trim().isNotEmpty
+                  ? invoice.clientName!.trim()
+                  : 'Client',
+              signatureData: invoice.clientSignatureData,
+              signedDate: invoice.clientSignedDate,
+              hint: 'Hand the phone to your client',
+              onSign: () => _handleSign(invoice, SignatureKind.client),
+            ),
+          if (invoice.showClientSignature && invoice.showMySignature)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 18),
+              height: 1,
+              color: AppColors.docLine,
+            ),
+          if (invoice.showMySignature)
+            DocSignatureBlock(
+              role: 'Company',
+              name: invoice.proName ?? 'Company',
+              signatureData: invoice.mySignatureData,
+              signedDate: invoice.mySignedDate,
+              hint: 'Or use your saved signature',
+              onSign: () => _handleSign(invoice, SignatureKind.company),
+            ),
+        ],
       ],
     );
   }

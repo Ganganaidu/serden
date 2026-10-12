@@ -11,9 +11,11 @@ import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/status_badge.dart';
+import '../../../shared/models/doc_signature.dart';
 import '../../../shared/services/document_printer.dart';
 import '../../../shared/widgets/attachment_preview.dart';
 import '../../../shared/widgets/paper_document.dart';
+import '../../../shared/widgets/signature_pad_screen.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../../clients/models/client_model.dart';
 import '../../more/models/company_profile_model.dart';
@@ -105,6 +107,30 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
     );
     if (draft == null || !mounted) return;
     context.read<EstimateDetailCubit>().sendEmail(draft);
+  }
+
+  Future<void> _handleSign(Estimate estimate, SignatureKind kind) async {
+    final isClient = kind == SignatureKind.client;
+    final company = _company?.proName?.trim();
+    final signer = isClient
+        ? ((_client?.name ?? estimate.clientName)?.trim() ?? '')
+        : (company ?? '');
+    final png = await captureSignature(
+      context,
+      title: isClient ? 'Client signature' : 'Company signature',
+      subtitle:
+          'Estimate #${estimate.number} · ${Formatters.currency(estimate.total)}',
+      name: signer,
+      consent: isClient
+          ? 'By tapping Save, {name} accepts estimate #${estimate.number} and '
+              'its terms, and agrees this electronic signature is as valid as '
+              'a handwritten one.'
+          : 'By tapping Save, {name} confirms estimate #${estimate.number}, '
+              'and agrees this electronic signature is as valid as a '
+              'handwritten one.',
+    );
+    if (png == null || !mounted) return;
+    context.read<EstimateDetailCubit>().saveSignature(kind, png);
   }
 
   Future<void> _handlePrint(Estimate estimate) async {
@@ -333,6 +359,7 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
                               mobileMode: _mobileMode,
                               onViewChanged: (m) =>
                                   setState(() => _mobileMode = m),
+                              onSign: (kind) => _handleSign(estimate, kind),
                             ),
                 ),
               ],
@@ -353,12 +380,16 @@ class _PaperDoc extends StatelessWidget {
   final bool mobileMode;
   final ValueChanged<bool> onViewChanged;
 
+  /// Null when rendering for print (signature blocks become static).
+  final void Function(SignatureKind kind)? onSign;
+
   const _PaperDoc({
     required this.estimate,
     required this.company,
     required this.client,
     required this.mobileMode,
     required this.onViewChanged,
+    this.onSign,
   });
 
   String _fmtDate(DateTime d) =>
@@ -754,7 +785,8 @@ class _PaperDoc extends StatelessWidget {
           label: estimate.taxName?.trim().isNotEmpty == true
               ? 'Tax (${estimate.taxName!.trim()})'
               : 'Tax',
-          value: '${estimate.taxRate!.toStringAsFixed(2)}%'));
+          value: '${estimate.taxRate!.toStringAsFixed(2)}%'
+              ' (${Formatters.currency(estimate.total - estimate.total / (1 + estimate.taxRate! / 100))})'));
     }
     rows.add(DocTotalRow(
         mobile: m,
@@ -828,20 +860,33 @@ class _PaperDoc extends StatelessWidget {
           'page 2, and authorizes $_companyName to schedule and perform the '
           'work described.',
         ),
-        const SizedBox(height: 44),
-        DocSignatureLine(
-          label: clientName != null && clientName.isNotEmpty
-              ? 'Client signature — $clientName'
-              : 'Client signature',
-        ),
-        const SizedBox(height: 34),
-        Row(
-          children: [
-            const Expanded(child: DocSignatureLine(label: 'Date')),
-            const SizedBox(width: 28),
-            Expanded(child: DocSignatureLine(label: _companyName)),
-          ],
-        ),
+        const SizedBox(height: 22),
+        if (estimate.showClientSignature)
+          DocSignatureBlock(
+            role: 'Client',
+            name: clientName != null && clientName.isNotEmpty
+                ? clientName
+                : 'Client',
+            signatureData: estimate.clientSignatureData,
+            signedDate: estimate.clientSignedDate,
+            hint: 'Hand the phone to your client',
+            onSign: onSign == null ? null : () => onSign!(SignatureKind.client),
+          ),
+        if (estimate.showClientSignature && estimate.showMySignature)
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 18),
+            height: 1,
+            color: AppColors.docLine,
+          ),
+        if (estimate.showMySignature)
+          DocSignatureBlock(
+            role: 'Company',
+            name: _companyName,
+            signatureData: estimate.mySignatureData,
+            signedDate: estimate.mySignedDate,
+            hint: 'Or use your saved signature',
+            onSign: onSign == null ? null : () => onSign!(SignatureKind.company),
+          ),
       ],
     );
   }

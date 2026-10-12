@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import '../../shared/repository/signature_repository.dart';
 import '../../features/plans/cubit/membership_cubit.dart';
 import '../../features/plans/repository/subscription_repository.dart';
 import '../../features/auth/bloc/auth_bloc.dart';
@@ -57,6 +58,7 @@ class Injection {
   static late CompanyProfileRepository _companyProfileRepository;
   static late ContactUsRepository _contactUsRepository;
   static late SubscriptionRepository _subscriptionRepository;
+  static late SignatureRepository _signatureRepository;
 
   static final _sessionExpired = StreamController<void>.broadcast();
 
@@ -88,6 +90,7 @@ class Injection {
     _contactUsRepository = ContactUsRepositoryImpl(apiClient: _apiClient);
     _subscriptionRepository =
         SubscriptionRepositoryImpl(apiClient: _apiClient);
+    _signatureRepository = SignatureRepositoryImpl(apiClient: _apiClient);
   }
 
   static SecureStorage get secureStorage => _secureStorage;
@@ -119,6 +122,7 @@ class Injection {
         invoiceRepository: _invoiceRepository,
         companyRepository: _companyProfileRepository,
         clientRepository: _clientRepository,
+        signatureRepository: _signatureRepository,
       );
 
   static InvoiceBloc createInvoiceBloc() =>
@@ -129,6 +133,7 @@ class Injection {
         repository: _invoiceRepository,
         companyRepository: _companyProfileRepository,
         clientRepository: _clientRepository,
+        signatureRepository: _signatureRepository,
       );
 
   static LeadBloc createLeadBloc() =>

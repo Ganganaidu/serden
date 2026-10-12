@@ -270,6 +270,12 @@ class Estimate extends Equatable {
   final bool showClientSignature;
   final bool showMySignature;
 
+  /// Signature image (URL or base64 data URI) and when it was captured.
+  final String? clientSignatureData;
+  final String? mySignatureData;
+  final DateTime? clientSignedDate;
+  final DateTime? mySignedDate;
+
   /// Client-facing display toggles from the API — whether the estimate PDF
   /// shows per-line rate, quantity, item totals, and section totals.
   final bool showRate;
@@ -323,6 +329,10 @@ class Estimate extends Equatable {
     this.total = 0,
     this.showClientSignature = true,
     this.showMySignature = false,
+    this.clientSignatureData,
+    this.mySignatureData,
+    this.clientSignedDate,
+    this.mySignedDate,
     this.showRate = true,
     this.showQuantity = true,
     this.showItemTotals = true,
@@ -397,6 +407,11 @@ class Estimate extends Equatable {
         total: (json['total'] as num?)?.toDouble() ?? 0,
         showClientSignature: json['showClientSignature'] as bool? ?? true,
         showMySignature: json['showMySignature'] as bool? ?? false,
+        clientSignatureData: json['clientSignatureData'] as String?,
+        mySignatureData: json['mySignatureData'] as String?,
+        clientSignedDate:
+            DateTime.tryParse(json['clientSignedDate'] as String? ?? ''),
+        mySignedDate: DateTime.tryParse(json['mySignedDate'] as String? ?? ''),
         showRate: json['showDisplayOptionsRate'] as bool? ?? true,
         showQuantity: json['showDisplayOptionsQuantity'] as bool? ?? true,
         showItemTotals: json['showDisplayOptionsItemTotals'] as bool? ?? true,
@@ -474,6 +489,10 @@ class Estimate extends Equatable {
     String? clientName,
     String? status,
     bool? isApproved,
+    String? clientSignatureData,
+    String? mySignatureData,
+    DateTime? clientSignedDate,
+    DateTime? mySignedDate,
   }) =>
       Estimate(
         estimateId: estimateId,
@@ -498,6 +517,10 @@ class Estimate extends Equatable {
         total: total,
         showClientSignature: showClientSignature,
         showMySignature: showMySignature,
+        clientSignatureData: clientSignatureData ?? this.clientSignatureData,
+        mySignatureData: mySignatureData ?? this.mySignatureData,
+        clientSignedDate: clientSignedDate ?? this.clientSignedDate,
+        mySignedDate: mySignedDate ?? this.mySignedDate,
         showRate: showRate,
         showQuantity: showQuantity,
         showItemTotals: showItemTotals,
@@ -527,6 +550,10 @@ class Estimate extends Equatable {
 
   @override
   List<Object?> get props => [
+        clientSignatureData,
+        mySignatureData,
+        clientSignedDate,
+        mySignedDate,
         estimateId,
         publicId,
         clientId,

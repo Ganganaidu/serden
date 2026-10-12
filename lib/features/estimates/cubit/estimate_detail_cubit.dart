@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -8,7 +11,9 @@ import '../../invoices/models/invoice_model.dart';
 import '../../invoices/repository/invoice_repository.dart';
 import '../../more/models/company_profile_model.dart';
 import '../../more/repository/company_profile_repository.dart';
+import '../../../shared/models/doc_signature.dart';
 import '../../../shared/models/send_document_draft.dart';
+import '../../../shared/repository/signature_repository.dart';
 import '../models/estimate_model.dart';
 import '../repository/estimate_repository.dart';
 
@@ -19,6 +24,7 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
   final InvoiceRepository _invoiceRepository;
   final CompanyProfileRepository _companyRepository;
   final ClientRepository _clientRepository;
+  final SignatureRepository _signatureRepository;
 
   // Cached across status changes so the paper document keeps its header data.
   CompanyProfile? _company;
@@ -29,10 +35,12 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
     required InvoiceRepository invoiceRepository,
     required CompanyProfileRepository companyRepository,
     required ClientRepository clientRepository,
+    required SignatureRepository signatureRepository,
   })  : _repository = repository,
         _invoiceRepository = invoiceRepository,
         _companyRepository = companyRepository,
         _clientRepository = clientRepository,
+        _signatureRepository = signatureRepository,
         super(const EstimateDetailInitial());
 
   void applyUpdate(Estimate updated) => emit(_loaded(updated));
@@ -238,6 +246,44 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
       (failure) => emit(EstimateDetailActionFailure(
           estimate: current, message: failure.message)),
       (_) => emit(const EstimateDetailDeleted()),
+    );
+  }
+
+  /// Uploads a drawn/typed signature (PNG) for [kind]; POST on first sign,
+  /// PUT when replacing an existing one. Updates the local copy on success.
+  Future<void> saveSignature(SignatureKind kind, Uint8List png) async {
+    final current = _current;
+    if (current == null) return;
+    final publicId = current.publicId;
+    if (publicId == null) {
+      emit(EstimateDetailActionFailure(
+          estimate: current, message: 'This estimate cannot be signed yet.'));
+      return;
+    }
+    final isClient = kind == SignatureKind.client;
+    final replace = ((isClient
+                ? current.clientSignatureData
+                : current.mySignatureData) ??
+            '')
+        .isNotEmpty;
+    emit(EstimateDetailBusy(current));
+    final result = await _signatureRepository.saveSignature(
+        SignedDocumentType.estimate, publicId, kind, png,
+        replace: replace);
+    result.fold(
+      (failure) => emit(EstimateDetailActionFailure(
+          estimate: current, message: failure.message)),
+      (sig) {
+        final signedAt = sig.signedDate ?? DateTime.now();
+        // Prefer the returned URL; fall back to inline data until the next fetch.
+        final data = sig.fileUrl ?? 'data:image/png;base64,${base64Encode(png)}';
+        final updated = isClient
+            ? current.copyWith(clientSignatureData: data, clientSignedDate: signedAt)
+            : current.copyWith(mySignatureData: data, mySignedDate: signedAt);
+        emit(EstimateDetailActionSuccess(
+            estimate: updated, message: 'Signature saved'));
+        emit(_loaded(updated));
+      },
     );
   }
 

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -5,7 +8,9 @@ import '../../clients/models/client_model.dart';
 import '../../clients/repository/client_repository.dart';
 import '../../more/models/company_profile_model.dart';
 import '../../more/repository/company_profile_repository.dart';
+import '../../../shared/models/doc_signature.dart';
 import '../../../shared/models/send_document_draft.dart';
+import '../../../shared/repository/signature_repository.dart';
 import '../models/invoice_model.dart';
 import '../repository/invoice_repository.dart';
 
@@ -15,6 +20,7 @@ class InvoiceDetailCubit extends Cubit<InvoiceDetailState> {
   final InvoiceRepository _repository;
   final CompanyProfileRepository _companyRepository;
   final ClientRepository _clientRepository;
+  final SignatureRepository _signatureRepository;
 
   CompanyProfile? _company;
   Client? _client;
@@ -23,9 +29,11 @@ class InvoiceDetailCubit extends Cubit<InvoiceDetailState> {
     required InvoiceRepository repository,
     required CompanyProfileRepository companyRepository,
     required ClientRepository clientRepository,
+    required SignatureRepository signatureRepository,
   })  : _repository = repository,
         _companyRepository = companyRepository,
         _clientRepository = clientRepository,
+        _signatureRepository = signatureRepository,
         super(const InvoiceDetailInitial());
 
   void applyUpdate(Invoice updated) => emit(_loaded(updated));
@@ -170,6 +178,44 @@ class InvoiceDetailCubit extends Cubit<InvoiceDetailState> {
       (failure) => emit(InvoiceDetailActionFailure(
           invoice: current, message: failure.message)),
       (_) => emit(const InvoiceDetailDeleted()),
+    );
+  }
+
+  /// Uploads a drawn/typed signature (PNG) for [kind]; POST on first sign,
+  /// PUT when replacing an existing one. Updates the local copy on success.
+  Future<void> saveSignature(SignatureKind kind, Uint8List png) async {
+    final current = _current;
+    if (current == null) return;
+    final publicId = current.publicId;
+    if (publicId == null) {
+      emit(InvoiceDetailActionFailure(
+          invoice: current, message: 'This invoice cannot be signed yet.'));
+      return;
+    }
+    final isClient = kind == SignatureKind.client;
+    final replace = ((isClient
+                ? current.clientSignatureData
+                : current.mySignatureData) ??
+            '')
+        .isNotEmpty;
+    emit(InvoiceDetailBusy(current));
+    final result = await _signatureRepository.saveSignature(
+        SignedDocumentType.invoice, publicId, kind, png,
+        replace: replace);
+    result.fold(
+      (failure) => emit(InvoiceDetailActionFailure(
+          invoice: current, message: failure.message)),
+      (sig) {
+        final signedAt = sig.signedDate ?? DateTime.now();
+        // Prefer the returned URL; fall back to inline data until the next fetch.
+        final data = sig.fileUrl ?? 'data:image/png;base64,${base64Encode(png)}';
+        final updated = isClient
+            ? current.copyWith(clientSignatureData: data, clientSignedDate: signedAt)
+            : current.copyWith(mySignatureData: data, mySignedDate: signedAt);
+        emit(InvoiceDetailActionSuccess(
+            invoice: updated, message: 'Signature saved'));
+        emit(_loaded(updated));
+      },
     );
   }
 

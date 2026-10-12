@@ -33,6 +33,9 @@ import 'subscription_limit_dialog.dart';
 /// of applying a saved preset.
 const int kCustomPickId = -1;
 
+/// Sentinel from the line-item markup sheet's "Remove markup" row.
+const int kRemoveMarkupId = -2;
+
 /// File types accepted by the "Files" attachment picker, and the per-file
 /// size cap — mirrors what the API accepts for estimate/invoice attachments.
 const List<String> kAttachmentExtensions = [
@@ -142,8 +145,8 @@ class LineItemDraft {
   static const int maxPhotos = 4;
   int get photoCount => existingPhotoUrls.length + photos.length;
 
-  /// The item's own markup (set from the catalog). When present it applies to
-  /// this row only and takes priority over the document-level markup.
+  /// This row's markup (from the catalog or a custom one). All row markups
+  /// add up into the Markup line of the totals section.
   ItemMarkup markup = ItemMarkup.none;
 
   double get baseTotal => qty * price;
@@ -154,8 +157,8 @@ class LineItemDraft {
           ? baseTotal * markup.rate / 100
           : markup.rate;
 
-  /// Line amount including the item's own markup.
-  double get total => baseTotal + markupAmount;
+  /// Line amount before markup — markups are added up in the totals section.
+  double get total => baseTotal;
 }
 
 /// Shared "New estimate" / "New invoice" form. The two designs are
@@ -208,26 +211,25 @@ class _DocumentFormState extends State<DocumentForm> {
   final Set<String> _activeAdjustments = {};
   double _discount = 0;
   AmountType _discountType = AmountType.fixed;
-  double _markup = 0;
   double _taxPct = 0;
   double _depositValue = 25;
   AmountType _depositType = AmountType.percent;
 
-  // Tax / markup picker selections. Tax always replaces; re-picking the same
-  // markup template stacks (increments) its value instead of replacing.
+  // Tax picker selection (replaces on each pick).
   int? _taxId;
   String? _taxName;
-  int? _markupTemplateId;
-  String? _markupName;
-  MarkupType _markupType = MarkupType.flat;
+
+  /// Document-level markup saved by older versions of the form (before
+  /// markups moved onto line items), as a fixed amount. Only kept while no
+  /// line item carries its own markup.
+  double _legacyMarkup = 0;
 
   // Bumped on each pick so the totals-row TextFormField (which only reads
   // `initialValue` on first build) rebuilds with the new value — see the
   // same gotcha/fix noted on LineItemDraft.rev.
   int _taxRev = 0;
-  int _markupRev = 0;
 
-  bool _groupSections = false;
+  bool _groupSections = true;
 
   /// Sections shown when "Group items into sections" is on. There is always
   /// at least one; each line item points at one via [LineItemDraft.section].
@@ -311,11 +313,7 @@ class _DocumentFormState extends State<DocumentForm> {
       _discount = e.discountValue!;
       _discountType = AmountType.fromApi(e.discountType);
     }
-    if ((e.markupValue ?? 0) > 0) {
-      _activeAdjustments.add('markup');
-      _markup = e.markupValue!;
-      _markupType = e.markupType == 'F' ? MarkupType.flat : MarkupType.percent;
-    }
+    _loadLegacyMarkup(e.markupType, e.markupValue);
     if ((e.taxRate ?? 0) > 0) {
       _activeAdjustments.add('tax');
       _taxPct = e.taxRate!;
@@ -436,11 +434,7 @@ class _DocumentFormState extends State<DocumentForm> {
       _discount = inv.discountValue!;
       _discountType = AmountType.fromApi(inv.discountType);
     }
-    if ((inv.markupValue ?? 0) > 0) {
-      _activeAdjustments.add('markup');
-      _markup = inv.markupValue!;
-      _markupType = inv.markupType == 'F' ? MarkupType.flat : MarkupType.percent;
-    }
+    _loadLegacyMarkup(inv.markupType, inv.markupValue);
     if ((inv.taxRate ?? 0) > 0) {
       _activeAdjustments.add('tax');
       _taxPct = inv.taxRate!;
@@ -456,9 +450,17 @@ class _DocumentFormState extends State<DocumentForm> {
   double get _subtotal =>
       _items.fold(0, (sum, item) => sum + item.total);
 
-  /// Document-level markup skips rows that carry their own markup.
-  double get _markupBase => _items.fold(
-      0, (sum, item) => item.markup.hasMarkup ? sum : sum + item.total);
+  /// Older documents stored one document-level markup; keep it (as a fixed
+  /// amount) only while no line item has its own.
+  void _loadLegacyMarkup(String? type, double? value) {
+    if ((value ?? 0) <= 0 || _items.any((it) => it.markup.hasMarkup)) return;
+    _legacyMarkup = type == 'F' ? value! : _subtotal * value! / 100;
+  }
+
+  /// Sum of every line item's markup (plus any legacy document markup).
+  double get _markupTotal =>
+      _items.fold<double>(0, (sum, it) => sum + it.markupAmount) +
+      (_items.any((it) => it.markup.hasMarkup) ? 0 : _legacyMarkup);
 
   double get _total {
     final discountRaw =
@@ -466,13 +468,16 @@ class _DocumentFormState extends State<DocumentForm> {
     final discount = _discountType == AmountType.percent
         ? _subtotal * discountRaw / 100
         : discountRaw;
-    final markupRaw = _activeAdjustments.contains('markup') ? _markup : 0.0;
-    final markup = _markupType == MarkupType.percent
-        ? _markupBase * markupRaw / 100
-        : markupRaw;
+    final markup = _markupTotal;
     final taxPct = _activeAdjustments.contains('tax') ? _taxPct : 0.0;
     final base = (_subtotal - discount + markup).clamp(0, double.infinity);
     return base * (1 + taxPct / 100);
+  }
+
+  /// Money value of the tax: the total minus the same total before tax.
+  double get _taxAmount {
+    if (!_activeAdjustments.contains('tax') || _taxPct <= 0) return 0;
+    return _total - _total / (1 + _taxPct / 100);
   }
 
   String get _footerLabel {
@@ -1022,59 +1027,39 @@ class _DocumentFormState extends State<DocumentForm> {
                             () => item.price = double.tryParse(v)?.abs() ?? 0),
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 1),
-                      child: _ChipButton(
-                        icon: Icons.list_alt_outlined,
-                        label: 'Item list',
-                        onTap: () => _pickCatalogItem(_items.indexOf(item)),
-                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _ChipButton(
+                      icon: Icons.list_alt_outlined,
+                      label: 'Item list',
+                      onTap: () => _pickCatalogItem(_items.indexOf(item)),
+                    ),
+                    _ChipButton(
+                      icon: Icons.trending_up,
+                      label: item.markup.hasMarkup
+                          ? 'Markup ${item.markup.displayRate}'
+                          : 'Markup',
+                      active: item.markup.hasMarkup,
+                      onTap: () => _pickItemMarkup(item),
+                    ),
+                    _ChipButton(
+                      icon: Icons.photo_camera_outlined,
+                      label: 'Photos ${item.photoCount}/${LineItemDraft.maxPhotos}',
+                      active: item.photoCount > 0,
+                      onTap: () => _addLineItemPhoto(item),
                     ),
                   ],
                 ),
-                if (item.markup.hasMarkup) ...[
-                  const SizedBox(height: 10),
-                  _markupPill(item),
+                if (item.photoCount > 0) ...[
+                  const SizedBox(height: 12),
+                  _photosBlock(item),
                 ],
-                const SizedBox(height: 12),
-                _photosBlock(item),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Shows the catalog item's own markup; tapping ✕ drops it from this row.
-  Widget _markupPill(LineItemDraft item) {
-    final m = item.markup;
-    final label = (m.name ?? '').trim().isEmpty ? 'Markup' : m.name!.trim();
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
-      decoration: BoxDecoration(
-        color: AppColors.orangeTint,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Flexible(
-            child: Text(
-              '$label ${m.displayRate} · +${Formatters.currency(item.markupAmount)}',
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.bodySmall.copyWith(
-                  fontWeight: FontWeight.w700, color: AppColors.orangeDeep),
-            ),
-          ),
-          const SizedBox(width: 4),
-          InkWell(
-            onTap: () => setState(() => item.markup = ItemMarkup.none),
-            borderRadius: BorderRadius.circular(12),
-            child: const Padding(
-              padding: EdgeInsets.all(3),
-              child: Icon(Icons.close, size: 14, color: AppColors.orangeDeep),
             ),
           ),
         ],
@@ -1194,15 +1179,6 @@ class _DocumentFormState extends State<DocumentForm> {
   }
 
   Widget _photosBlock(LineItemDraft item) {
-    final count = item.photoCount;
-    if (count == 0) {
-      return _ChipButton(
-        icon: Icons.photo_camera_outlined,
-        label: 'Photos 0/${LineItemDraft.maxPhotos}',
-        onTap: () => _addLineItemPhoto(item),
-      );
-    }
-
     Widget thumb(Widget image, {VoidCallback? onRemove}) => Stack(
           clipBehavior: Clip.none,
           children: [
@@ -1251,24 +1227,6 @@ class _DocumentFormState extends State<DocumentForm> {
                         color: AppColors.inkSoft))),
             onRemove: () => setState(() => item.photos.remove(file)),
           ),
-        if (count < LineItemDraft.maxPhotos)
-          InkWell(
-            onTap: () => _addLineItemPhoto(item),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.card,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.line),
-              ),
-              child: const Icon(Icons.photo_camera_outlined,
-                  color: AppColors.inkSoft),
-            ),
-          ),
-        Text('$count of ${LineItemDraft.maxPhotos} photos',
-            style: AppTextStyles.caption),
       ],
     );
   }
@@ -1320,9 +1278,8 @@ class _DocumentFormState extends State<DocumentForm> {
     ('deposit', 'Request deposit'),
   ];
 
-  // Discount, Tax, Markup, and Request deposit stay visible after being
-  // added — tapping them again reopens the picker to change (or, for
-  // Markup, stack) the selection. The rest hide once active.
+  // Discount, Tax, Markup and Request deposit stay visible after being added —
+  // tapping them again reopens the picker to change the selection.
   static const _alwaysShownAdjustments = {
     'discount',
     'tax',
@@ -1344,16 +1301,20 @@ class _DocumentFormState extends State<DocumentForm> {
           for (final adj in available)
             _ChipButton(
               label: adj.$2,
-              active: _activeAdjustments.contains(adj.$1),
-              icon: _activeAdjustments.contains(adj.$1)
-                  ? Icons.check
-                  : Icons.add,
+              active: _adjustmentActive(adj.$1),
+              icon: _adjustmentActive(adj.$1) ? Icons.check : Icons.add,
               onTap: () => _handleAdjustmentTap(adj.$1),
             ),
         ],
       ),
     );
   }
+
+  /// Markup isn't stored in [_activeAdjustments] — it lives on the line items
+  /// — so it counts as applied whenever the rows carry any markup.
+  bool _adjustmentActive(String key) => key == 'markup'
+      ? _markupTotal > 0
+      : _activeAdjustments.contains(key);
 
   void _handleAdjustmentTap(String key) {
     switch (key) {
@@ -1362,7 +1323,7 @@ class _DocumentFormState extends State<DocumentForm> {
       case 'tax':
         _pickTax();
       case 'markup':
-        _pickMarkup();
+        _pickDocMarkup();
       case 'deposit':
         _pickDeposit();
       default:
@@ -1434,35 +1395,131 @@ class _DocumentFormState extends State<DocumentForm> {
     });
   }
 
-  Future<void> _pickMarkup() async {
+  /// Document markup: always an amount (percentage or fixed). It isn't kept
+  /// as its own value — it's split equally across every line item's markup,
+  /// replacing whatever markups the rows had.
+  Future<void> _pickDocMarkup() async {
+    final current = _markupTotal;
+    final result = await showModalBottomSheet<(AmountType, double)>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _AmountPickerSheet(
+        title: 'Markup',
+        amountLabel: 'Markup Amount',
+        initialType: AmountType.fixed,
+        initialValue: double.parse(current.toStringAsFixed(2)),
+      ),
+    );
+    if (result == null || !mounted) return;
+    final amount = result.$1 == AmountType.percent
+        ? _subtotal * result.$2 / 100
+        : result.$2;
+    setState(() => _splitMarkup(amount));
+  }
+
+  /// Gives every line item an equal fixed share of [amount] (cents-rounded,
+  /// the last row absorbing the remainder). Zero clears all markups.
+  void _splitMarkup(double amount) {
+    _legacyMarkup = 0;
+    final n = _items.length;
+    if (amount <= 0 || n == 0) {
+      for (final it in _items) {
+        it.markup = ItemMarkup.none;
+      }
+      return;
+    }
+    final total = double.parse(amount.toStringAsFixed(2));
+    final share = double.parse((total / n).toStringAsFixed(2));
+    var assigned = 0.0;
+    for (var i = 0; i < n; i++) {
+      final value = i == n - 1
+          ? double.parse((total - assigned).toStringAsFixed(2))
+          : share;
+      assigned += value;
+      _items[i].markup = value > 0
+          ? ItemMarkup(name: 'Markup', type: MarkupType.flat, rate: value)
+          : ItemMarkup.none;
+    }
+  }
+
+  Future<void> _pickItemMarkup(LineItemDraft item) async {
     final proId = _proId;
     if (proId == null) return;
     final picked = await showModalBottomSheet<MarkupTemplate>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) =>
-          _MarkupPickerSheet(proId: proId, selectedId: _markupTemplateId),
+      builder: (sheetContext) => _MarkupPickerSheet(
+        proId: proId,
+        allowRemove: item.markup.hasMarkup,
+      ),
     );
-    if (picked == null) return;
-    setState(() {
-      if (picked.id == kCustomPickId) {
-        // "Custom amount" — detach from any template, keep the current
-        // type/value (or the flat/0 default on first activation).
-        _markupTemplateId = null;
-        _markupName = null;
-      } else {
-        // Re-picking the same template stacks it; picking a different one
-        // (or picking for the first time) replaces the current value.
-        _markup = _markupTemplateId == picked.id
-            ? _markup + picked.rate
-            : picked.rate;
-        _markupType = picked.type;
-        _markupName = picked.name;
-        _markupTemplateId = picked.id;
-      }
-      _markupRev++;
-      _activeAdjustments.add('markup');
-    });
+    if (picked == null || !mounted) return;
+    if (picked.id == kRemoveMarkupId) {
+      setState(() => item.markup = ItemMarkup.none);
+    } else if (picked.id == kCustomPickId) {
+      final custom = await _askCustomMarkup(item.markup);
+      if (custom != null && mounted) setState(() => item.markup = custom);
+    } else {
+      setState(() => item.markup = ItemMarkup(
+          name: picked.name, type: picked.type, rate: picked.rate));
+    }
+  }
+
+  /// One-off markup for a single line item: percentage or fixed amount.
+  Future<ItemMarkup?> _askCustomMarkup(ItemMarkup current) {
+    var type = current.hasMarkup ? current.type : MarkupType.percent;
+    final controller = TextEditingController(
+        text: current.hasMarkup ? _trimmed(current.rate) : '');
+    return showDialog<ItemMarkup>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Custom markup'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SegmentedButton<MarkupType>(
+                segments: const [
+                  ButtonSegment(
+                      value: MarkupType.percent, label: Text('Percentage')),
+                  ButtonSegment(value: MarkupType.flat, label: Text('Fixed')),
+                ],
+                selected: {type},
+                onSelectionChanged: (v) =>
+                    setDialogState(() => type = v.first),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: InputDecoration(
+                  prefixText: type == MarkupType.flat ? '\$ ' : null,
+                  suffixText: type == MarkupType.percent ? '%' : null,
+                  hintText: '0',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Cancel')),
+            TextButton(
+              onPressed: () {
+                final v = double.tryParse(controller.text) ?? 0;
+                Navigator.of(ctx).pop(v > 0
+                    ? ItemMarkup(name: 'Markup', type: type, rate: v)
+                    : ItemMarkup.none);
+              },
+              child: const Text('Apply'),
+            ),
+          ],
+        ),
+      ),
+    ).whenComplete(controller.dispose);
   }
 
   Widget _totalsCard() {
@@ -1473,8 +1530,36 @@ class _DocumentFormState extends State<DocumentForm> {
             'Subtotal',
             value: Text(Formatters.currency(_subtotal),
                 style: AppTextStyles.labelMedium.copyWith(fontSize: 14)),
-            showDivider: _activeAdjustments.isNotEmpty,
+            showDivider: _activeAdjustments.isNotEmpty || _markupTotal > 0,
           ),
+          if (_markupTotal > 0)
+            _totalRow(
+              'Markup',
+              showDivider: _activeAdjustments.isNotEmpty,
+              value: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('+${Formatters.currency(_markupTotal)}',
+                      style:
+                          AppTextStyles.labelMedium.copyWith(fontSize: 13.5)),
+                  // Removing it clears the markup from every line item.
+                  InkWell(
+                    onTap: () => setState(() {
+                      for (final it in _items) {
+                        it.markup = ItemMarkup.none;
+                      }
+                      _legacyMarkup = 0;
+                    }),
+                    borderRadius: BorderRadius.circular(6),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(Icons.close,
+                          size: 13, color: AppColors.inkFaint),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_activeAdjustments.contains('discount'))
             _totalRow(
               'Discount',
@@ -1500,20 +1585,13 @@ class _DocumentFormState extends State<DocumentForm> {
                 ),
               ),
             ),
-          if (_activeAdjustments.contains('markup'))
-            _adjustInputRow(
-              _markupName != null ? 'Markup — $_markupName' : 'Markup',
-              key: 'markup',
-              fieldKey: ValueKey('markup-field-$_markupRev'),
-              prefix: _markupType == MarkupType.flat ? '+\$' : null,
-              suffix: _markupType == MarkupType.percent ? '%' : null,
-              initial: _markup,
-              onChanged: (v) => _markup = v,
-            ),
           if (_activeAdjustments.contains('tax'))
             _adjustInputRow(
               _taxName != null ? 'Tax ($_taxName)' : 'Tax',
               key: 'tax',
+              subLabel: _taxAmount > 0
+                  ? '= ${Formatters.currency(_taxAmount)} on this total'
+                  : null,
               fieldKey: ValueKey('tax-field-$_taxRev'),
               suffix: '%',
               initial: _taxPct,
@@ -1553,7 +1631,7 @@ class _DocumentFormState extends State<DocumentForm> {
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
   Widget _totalRow(String label,
-      {required Widget value, bool showDivider = true}) {
+      {required Widget value, bool showDivider = true, String? subLabel}) {
     return Container(
       decoration: BoxDecoration(
         border: showDivider
@@ -1564,9 +1642,21 @@ class _DocumentFormState extends State<DocumentForm> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: AppTextStyles.bodyMedium
-                  .copyWith(color: AppColors.inkSoft, height: 1.2)),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: AppColors.inkSoft, height: 1.2)),
+                if (subLabel != null)
+                  Text(subLabel,
+                      style: AppTextStyles.caption
+                          .copyWith(fontSize: 12, color: AppColors.greenDeep)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           value,
         ],
       ),
@@ -1581,10 +1671,12 @@ class _DocumentFormState extends State<DocumentForm> {
     String? prefix,
     String? suffix,
     Key? fieldKey,
+    String? subLabel,
   }) {
     final isLast = key == _activeAdjustments.last;
     return _totalRow(
       label,
+      subLabel: subLabel,
       showDivider: !isLast,
       value: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1644,11 +1736,6 @@ class _DocumentFormState extends State<DocumentForm> {
           _taxId = null;
           _taxName = null;
           _taxPct = 0;
-        } else if (key == 'markup') {
-          _markupTemplateId = null;
-          _markupName = null;
-          _markupType = MarkupType.flat;
-          _markup = 0;
         } else if (key == 'deposit') {
           _depositType = AmountType.percent;
           _depositValue = 25;
@@ -2389,8 +2476,7 @@ class _DocumentFormState extends State<DocumentForm> {
       if (!nest) lineItems.addAll(built);
     }
 
-    final markupActive =
-        _activeAdjustments.contains('markup') && _markup > 0;
+    final markupTotal = _markupTotal;
     final discountActive =
         _activeAdjustments.contains('discount') && _discount > 0;
     final taxActive = _activeAdjustments.contains('tax') && _taxPct > 0;
@@ -2402,7 +2488,7 @@ class _DocumentFormState extends State<DocumentForm> {
         proId: proId,
         lineItems: lineItems,
         sections: sections,
-        markupActive: markupActive,
+        markupTotal: markupTotal,
         discountActive: discountActive,
         taxActive: taxActive,
         depositActive: depositActive,
@@ -2426,12 +2512,9 @@ class _DocumentFormState extends State<DocumentForm> {
           : base?.expirationDate,
       groupItemsIntoSections: _groupSections,
       subtotal: _subtotal,
-      markupType: markupActive
-          ? (_markupType == MarkupType.flat
-              ? AmountType.fixed.apiValue
-              : AmountType.percent.apiValue)
-          : null,
-      markupValue: markupActive ? _markup : null,
+      // Row markups added up, as one fixed amount for the totals section.
+      markupType: markupTotal > 0 ? AmountType.fixed.apiValue : null,
+      markupValue: markupTotal > 0 ? markupTotal : null,
       discountType: discountActive ? _discountType.apiValue : null,
       discountValue: discountActive ? _discount : null,
       depositType: depositActive ? _depositType.apiValue : null,
@@ -2465,7 +2548,7 @@ class _DocumentFormState extends State<DocumentForm> {
     required int proId,
     required List<EstimateLineItem> lineItems,
     required List<EstimateSection> sections,
-    required bool markupActive,
+    required double markupTotal,
     required bool discountActive,
     required bool taxActive,
     required bool depositActive,
@@ -2501,12 +2584,9 @@ class _DocumentFormState extends State<DocumentForm> {
       daysToPay: _daysToPay,
       groupItemsIntoSections: _groupSections,
       subtotal: _subtotal,
-      markupType: markupActive
-          ? (_markupType == MarkupType.flat
-              ? AmountType.fixed.apiValue
-              : AmountType.percent.apiValue)
-          : null,
-      markupValue: markupActive ? _markup : null,
+      // Row markups added up, as one fixed amount for the totals section.
+      markupType: markupTotal > 0 ? AmountType.fixed.apiValue : null,
+      markupValue: markupTotal > 0 ? markupTotal : null,
       discountType: discountActive ? _discountType.apiValue : null,
       discountValue: discountActive ? _discount : null,
       depositType: depositActive ? _depositType.apiValue : null,
@@ -3531,8 +3611,10 @@ class _TaxPickerSheetState extends State<_TaxPickerSheet> {
 /// (adds) its rate instead, so a markup can be applied more than once.
 class _MarkupPickerSheet extends StatefulWidget {
   final int proId;
-  final int? selectedId;
-  const _MarkupPickerSheet({required this.proId, this.selectedId});
+
+  /// Adds a "Remove markup" row (when the line item already has one).
+  final bool allowRemove;
+  const _MarkupPickerSheet({required this.proId, this.allowRemove = false});
 
   @override
   State<_MarkupPickerSheet> createState() => _MarkupPickerSheetState();
@@ -3575,7 +3657,7 @@ class _MarkupPickerSheetState extends State<_MarkupPickerSheet> {
               leading: const Icon(Icons.edit_outlined,
                   size: 20, color: AppColors.inkSoft),
               title: Text('Custom amount', style: AppTextStyles.rowTitle),
-              subtitle: Text('Enter a one-off markup for this document',
+              subtitle: Text('Enter a one-off markup for this item',
                   style: AppTextStyles.caption),
               onTap: () => Navigator.of(context).pop(
                 const MarkupTemplate(
@@ -3586,6 +3668,22 @@ class _MarkupPickerSheetState extends State<_MarkupPickerSheet> {
                     rate: 0),
               ),
             ),
+            if (widget.allowRemove)
+              ListTile(
+                leading: const Icon(Icons.remove_circle_outline,
+                    size: 20, color: AppColors.redDeep),
+                title: Text('Remove markup',
+                    style: AppTextStyles.rowTitle
+                        .copyWith(color: AppColors.redDeep)),
+                onTap: () => Navigator.of(context).pop(
+                  const MarkupTemplate(
+                      id: kRemoveMarkupId,
+                      proId: 0,
+                      name: '',
+                      type: MarkupType.flat,
+                      rate: 0),
+                ),
+              ),
             const Divider(height: 1),
             Expanded(
               child: FutureBuilder<List<MarkupTemplate>>(
@@ -3625,23 +3723,10 @@ class _MarkupPickerSheetState extends State<_MarkupPickerSheet> {
                     itemCount: markups.length,
                     itemBuilder: (context, i) {
                       final m = markups[i];
-                      final selected = m.id == widget.selectedId;
                       return ListTile(
-                        leading: Icon(
-                          selected
-                              ? Icons.check_circle
-                              : Icons.circle_outlined,
-                          size: 20,
-                          color: selected
-                              ? AppColors.greenDeep
-                              : AppColors.inkFaint,
-                        ),
+                        leading: const Icon(Icons.trending_up,
+                            size: 20, color: AppColors.inkSoft),
                         title: Text(m.name, style: AppTextStyles.rowTitle),
-                        subtitle: selected
-                            ? Text('Applied — tap to add another ${m.displayRate}',
-                                style: AppTextStyles.caption
-                                    .copyWith(color: AppColors.greenDeep))
-                            : null,
                         trailing: Text(m.displayRate,
                             style: AppTextStyles.rowAmount
                                 .copyWith(fontSize: 14)),
