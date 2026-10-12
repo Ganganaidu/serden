@@ -3246,6 +3246,31 @@ class _ClientPickerSheetState extends State<_ClientPickerSheet> {
     return result.fold((f) => throw f.message, (clients) => clients);
   }
 
+  /// Opens the existing new-client page on top of this sheet; once the client
+  /// is saved we land back here and the list is reloaded to include it.
+  Future<void> _addClient() async {
+    final result =
+        await context.push<Map<String, dynamic>>(AppRoutes.addClient);
+    if (!mounted || result == null) return;
+    setState(() => _future = _load());
+  }
+
+  Widget _addClientRow() => ListTile(
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.greenTint,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.person_add_alt_1_outlined,
+              size: 18, color: AppColors.greenDeep),
+        ),
+        title: Text('Add new client',
+            style: AppTextStyles.rowTitle.copyWith(color: AppColors.greenDeep)),
+        onTap: _addClient,
+      );
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -3309,18 +3334,24 @@ class _ClientPickerSheetState extends State<_ClientPickerSheet> {
                       .toList()
                     ..sort((a, b) => a.name.compareTo(b.name));
                   if (clients.isEmpty) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Text('No clients found.',
-                            style: AppTextStyles.caption),
-                      ),
+                    return ListView(
+                      children: [
+                        _addClientRow(),
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(
+                            child: Text('No clients found.',
+                                style: AppTextStyles.caption),
+                          ),
+                        ),
+                      ],
                     );
                   }
                   return ListView.builder(
-                    itemCount: clients.length,
+                    itemCount: clients.length + 1,
                     itemBuilder: (context, i) {
-                      final c = clients[i];
+                      if (i == 0) return _addClientRow();
+                      final c = clients[i - 1];
                       return ListTile(
                         title: Text(c.name, style: AppTextStyles.rowTitle),
                         subtitle: c.place.isEmpty

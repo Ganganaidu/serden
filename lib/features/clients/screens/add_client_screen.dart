@@ -28,6 +28,7 @@ import '../models/client_model.dart';
 ///
 /// The caller (ClientDetailScreen) receives the result via GoRouter's push
 /// return value:
+///   - `{'client': createdClient}` on successful create
 ///   - `{'client': updatedClient}` on successful update
 ///   - `{'deleted': true}` on successful delete
 ///   - `null` on discard / back navigation
@@ -274,7 +275,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
           setState(() => _saving = true);
         } else if (state is ClientCreateSuccess) {
           setState(() => _saving = false);
-          context.pop();
+          context.pop({'client': state.created});
         } else if (state is ClientUpdateSuccess) {
           setState(() => _saving = false);
           context.pop({'client': state.updated});
