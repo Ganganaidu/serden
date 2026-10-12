@@ -142,7 +142,6 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
       company: _company,
       client: _client,
       mobileMode: false,
-      onViewChanged: (_) {},
     ).printPages();
     try {
       await DocumentPrinter.print(
@@ -342,9 +341,17 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
                   )
                 else
                   const StatusBandSkeleton(),
+                // Pinned above the scrolling document (same as invoices).
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: ViewToggle(
+                    mobileMode: _mobileMode,
+                    onChanged: (m) => setState(() => _mobileMode = m),
+                  ),
+                ),
                 Expanded(
                   child: estimate == null && errorMessage == null
-                      ? const DocumentSkeleton(withToggle: true)
+                      ? const DocumentSkeleton()
                       : errorMessage != null && estimate == null
                           ? AppErrorWidget(
                               message: errorMessage,
@@ -357,8 +364,6 @@ class _EstimateDetailScreenState extends State<EstimateDetailScreen> {
                               company: _company,
                               client: _client,
                               mobileMode: _mobileMode,
-                              onViewChanged: (m) =>
-                                  setState(() => _mobileMode = m),
                               onSign: (kind) => _handleSign(estimate, kind),
                             ),
                 ),
@@ -378,7 +383,6 @@ class _PaperDoc extends StatelessWidget {
   final CompanyProfile? company;
   final Client? client;
   final bool mobileMode;
-  final ValueChanged<bool> onViewChanged;
 
   /// Null when rendering for print (signature blocks become static).
   final void Function(SignatureKind kind)? onSign;
@@ -388,7 +392,6 @@ class _PaperDoc extends StatelessWidget {
     required this.company,
     required this.client,
     required this.mobileMode,
-    required this.onViewChanged,
     this.onSign,
   });
 
@@ -537,12 +540,8 @@ class _PaperDoc extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 14),
-          child: ViewToggle(mobileMode: mobileMode, onChanged: onViewChanged),
-        ),
         PaperPage(
           mobile: mobileMode,
           footer: const DocPageNote('Page 1 of 3'),

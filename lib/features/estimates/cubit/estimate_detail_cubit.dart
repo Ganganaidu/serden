@@ -172,7 +172,15 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
   /// API creates fresh rows; line items are regrouped under their sections
   /// (the estimate API returns them flat, keyed by `sectionId`).
   Invoice _invoiceFromEstimate(Estimate e) {
-    InvoiceLineItem toItem(EstimateLineItem li) => InvoiceLineItem(
+    // Every line item goes in the top-level list; rows of a section carry a
+    // temporary negative section id (-(sortOrder + 1)) that the repository
+    // swaps for the real id once the API has created the section.
+    final consumed = <EstimateLineItem>{};
+    final sections = <InvoiceSection>[];
+    final items = <InvoiceLineItem>[];
+    var order = 0;
+    InvoiceLineItem toRow(EstimateLineItem li, int? sectionId) => InvoiceLineItem(
+          sectionId: sectionId,
           description: li.description,
           notes: li.notes,
           unitPrice: li.unitPrice,
@@ -183,28 +191,27 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
           taxRate: li.taxRate,
           taxAmount: li.taxAmount,
           total: li.lineTotal,
-          sortOrder: li.sortOrder,
+          sortOrder: order++,
         );
-
-    final consumed = <EstimateLineItem>{};
-    final sections = <InvoiceSection>[];
     for (final s in e.sections) {
-      final items = s.lineItems.isNotEmpty
+      final rows = s.lineItems.isNotEmpty
           ? s.lineItems
           : e.lineItems
               .where((li) => li.sectionId != null && li.sectionId == s.sectionId)
               .toList();
-      consumed.addAll(items);
+      consumed.addAll(rows);
+      if (rows.isEmpty) continue;
+      final sortOrder = sections.length;
       sections.add(InvoiceSection(
         name: s.name,
-        sortOrder: s.sortOrder,
+        sortOrder: sortOrder,
         subtotal: s.subtotal,
         isExpanded: s.isExpanded,
-        lineItems: items.map(toItem).toList(),
       ));
+      items.addAll(rows.map((li) => toRow(li, -(sortOrder + 1))));
     }
-    final loose =
-        e.lineItems.where((li) => !consumed.contains(li)).map(toItem).toList();
+    items.addAll(
+        e.lineItems.where((li) => !consumed.contains(li)).map((li) => toRow(li, null)));
 
     return Invoice(
       proId: e.proId,
@@ -233,7 +240,7 @@ class EstimateDetailCubit extends Cubit<EstimateDetailState> {
       privateNotes: e.privateNotes,
       status: 'draft',
       sections: sections,
-      lineItems: loose,
+      lineItems: items,
     );
   }
 

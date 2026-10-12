@@ -574,10 +574,17 @@ class DocSignatureLine extends StatelessWidget {
 
 /// ImageProvider for a stored signature — an http(s) URL, a `data:` URI, or
 /// raw base64. Null when [data] is empty/undecodable.
-ImageProvider? signatureImage(String? data) {
+///
+/// A re-signed document keeps the same image URL, so pass [version] (the signed
+/// timestamp) to bust the image cache and show the new signature.
+ImageProvider? signatureImage(String? data, {DateTime? version}) {
   final v = data?.trim();
   if (v == null || v.isEmpty) return null;
-  if (v.startsWith('http')) return NetworkImage(v);
+  if (v.startsWith('http')) {
+    if (version == null) return NetworkImage(v);
+    final sep = v.contains('?') ? '&' : '?';
+    return NetworkImage('$v${sep}v=${version.millisecondsSinceEpoch}');
+  }
   try {
     final b64 = v.startsWith('data:') ? v.substring(v.indexOf(',') + 1) : v;
     return MemoryImage(base64Decode(b64));
@@ -610,7 +617,7 @@ class DocSignatureBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final image = signatureImage(signatureData);
+    final image = signatureImage(signatureData, version: signedDate);
     final signed = image != null;
     final labelStyle = docStyle(
         size: 11,

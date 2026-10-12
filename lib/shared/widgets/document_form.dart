@@ -11,6 +11,7 @@ import '../../core/di/injection.dart';
 import '../../core/router/app_router.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_text_styles.dart';
+import '../../core/utils/app_logger.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/form_nav_bar.dart';
@@ -533,8 +534,11 @@ class _DocumentFormState extends State<DocumentForm> {
         failedUploads = await _uploadStagedAttachments(invoice!.publicId!);
       }
       if (invoice?.publicId != null) {
-        failedUploads +=
-            await _uploadLineItemPhotos(invoice!.publicId!, invoice.invoiceId);
+        failedUploads += await _uploadLineItemPhotos(
+          invoice!.publicId!,
+          invoice.invoiceId,
+          [for (final li in invoice.allLineItems) (li.sortOrder, li.lineItemId)],
+        );
       }
       if (!context.mounted) return;
       setState(() => _submitting = false);
@@ -580,7 +584,10 @@ class _DocumentFormState extends State<DocumentForm> {
       }
       if (estimate?.publicId != null) {
         failedUploads += await _uploadLineItemPhotos(
-            estimate!.publicId!, estimate.estimateId);
+          estimate!.publicId!,
+          estimate.estimateId,
+          [for (final li in estimate.allLineItems) (li.sortOrder, li.lineItemId)],
+        );
       }
       if (!context.mounted) return;
       setState(() => _submitting = false);
@@ -2279,34 +2286,71 @@ class _DocumentFormState extends State<DocumentForm> {
   /// Uploads staged per-line-item photos. The save response doesn't reliably
   /// carry line-item ids, so the document is re-fetched and items matched by
   /// the sortOrder they were saved with.
-  Future<int> _uploadLineItemPhotos(String publicId, int docId) async {
+  Future<int> _uploadLineItemPhotos(
+    String publicId,
+    int docId,
+    List<(int, int)> fromResponse,
+  ) async {
     final pending = [
       for (final it in _items)
         if (it.photos.isNotEmpty && _savedOrder.containsKey(it)) it,
     ];
     if (pending.isEmpty) return 0;
 
-    final saved = <int, int>{}; // sortOrder → lineItemId
-    if (widget.isInvoice) {
-      final r = await Injection.invoiceRepository.fetchInvoiceDetail(docId);
-      r.fold((_) {}, (inv) {
-        for (final li in inv.allLineItems) {
-          saved[li.sortOrder] = li.lineItemId;
-        }
-      });
-    } else {
-      final r = await Injection.estimateRepository.fetchEstimateDetail(docId);
-      r.fold((_) {}, (est) {
-        for (final li in est.allLineItems) {
-          saved[li.sortOrder] = li.lineItemId;
-        }
-      });
+    // (sortOrder, lineItemId) of every saved line item. Prefer the save
+    // response; re-fetch only if it doesn't list every item we sent.
+    final saved = <(int, int)>[...fromResponse.where((e) => e.$2 != 0)];
+    final needLookup = pending.any((it) => it.existingId == 0);
+    if (needLookup && saved.length != _savedOrder.length) {
+      saved.clear();
+      if (widget.isInvoice) {
+        final r = await Injection.invoiceRepository.fetchInvoiceDetail(docId);
+        r.fold(
+            (f) => AppLogger.error(
+                'line-item photos: refetch failed (doc $docId) — ${f.message}'),
+            (inv) {
+          for (final li in inv.allLineItems) {
+            saved.add((li.sortOrder, li.lineItemId));
+          }
+        });
+      } else {
+        final r = await Injection.estimateRepository.fetchEstimateDetail(docId);
+        r.fold(
+            (f) => AppLogger.error(
+                'line-item photos: refetch failed (doc $docId) — ${f.message}'),
+            (est) {
+          for (final li in est.allLineItems) {
+            saved.add((li.sortOrder, li.lineItemId));
+          }
+        });
+      }
+    }
+    saved.sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : a.$2.compareTo(b.$2));
+
+    // The API may renumber sortOrder (e.g. 1-based), so match by position:
+    // our saved rows, in the order we sent them, against the saved line
+    // items in their order. Falls back to an exact sortOrder match.
+    final sent = _savedOrder.keys.toList()
+      ..sort((a, b) => _savedOrder[a]!.compareTo(_savedOrder[b]!));
+    int? lineItemIdFor(LineItemDraft it) {
+      // Items that were already saved (edit) keep their id.
+      if (it.existingId != 0) return it.existingId;
+      if (saved.length == sent.length) {
+        final i = sent.indexOf(it);
+        if (i >= 0) return saved[i].$2;
+      }
+      for (final (order, id) in saved) {
+        if (order == _savedOrder[it]) return id;
+      }
+      return null;
     }
 
     var failures = 0;
     for (final it in pending) {
-      final lineItemId = saved[_savedOrder[it]];
+      final lineItemId = lineItemIdFor(it);
       if (lineItemId == null) {
+        AppLogger.error(
+            'line-item photos: no saved line item matched (doc $docId, sent ${sent.length}, saved ${saved.length})');
         failures += it.photos.length;
         continue;
       }
@@ -2316,7 +2360,11 @@ class _DocumentFormState extends State<DocumentForm> {
                 .uploadLineItemPhoto(publicId, lineItemId, photo.path)
             : await Injection.estimateRepository
                 .uploadLineItemPhoto(publicId, lineItemId, photo.path);
-        r.fold((_) => failures++, (_) {});
+        r.fold((f) {
+          AppLogger.error(
+              'line-item photo upload failed (item $lineItemId): ${f.message}');
+          failures++;
+        }, (_) {});
       }
     }
     return failures;
@@ -2424,13 +2472,14 @@ class _DocumentFormState extends State<DocumentForm> {
     final estimateDate = base?.estimateDate ?? DateTime.now();
 
     // Group the rows by section. A named section (grouping on) becomes an
-    // API section; unnamed groups are sent as loose line items. A section
-    // that already exists on the API is referenced by id (flat line items
-    // carry `sectionId`, matching the GET shape); a new one has its line items
-    // nested inside it.
+    // API section; unnamed groups are sent as loose line items. Every line
+    // item always goes in the top-level list (the API ignores items nested in
+    // a section): rows of an existing section carry its `sectionId`, rows of
+    // a NEW section carry a temporary negative id (-(sortOrder + 1)) that the
+    // repository swaps for the real section id in a second save.
     var order = 0;
     _savedOrder.clear();
-    final lineItems = <EstimateLineItem>[]; // top-level line items
+    final lineItems = <EstimateLineItem>[];
     final sections = <EstimateSection>[];
     for (final sec in _sections) {
       final name = _groupSections ? sec.name.text.trim() : '';
@@ -2442,12 +2491,17 @@ class _DocumentFormState extends State<DocumentForm> {
       ];
       if (rows.isEmpty) continue;
       final named = name.isNotEmpty;
-      final existing = named && sec.existingId != 0;
+      final sortOrder = sections.length;
+      final int? rowSectionId = !named
+          ? null
+          : sec.existingId != 0
+              ? sec.existingId
+              : -(sortOrder + 1);
       final built = [
         for (final it in rows)
           EstimateLineItem(
             lineItemId: it.existingId,
-            sectionId: existing ? sec.existingId : null,
+            sectionId: rowSectionId,
             catalogLineItemId: it.catalogItemId,
             description: it.name.trim(),
             // Clearing the text on a saved item sends '' so the API drops it.
@@ -2463,17 +2517,15 @@ class _DocumentFormState extends State<DocumentForm> {
             markupValue: it.markup.hasMarkup ? it.markup.rate : null,
           ),
       ];
-      final nest = named && !existing;
       if (named) {
         sections.add(EstimateSection(
           sectionId: sec.existingId,
           name: name,
-          sortOrder: sections.length,
+          sortOrder: sortOrder,
           subtotal: built.fold<double>(0, (t, li) => t + li.total),
-          lineItems: nest ? built : const [],
         ));
       }
-      if (!nest) lineItems.addAll(built);
+      lineItems.addAll(built);
     }
 
     final markupTotal = _markupTotal;

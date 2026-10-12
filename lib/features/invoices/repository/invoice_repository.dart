@@ -8,6 +8,7 @@ import '../../../core/errors/failures.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/app_logger.dart';
 import '../../../shared/models/send_document_draft.dart';
+import '../../../shared/utils/section_linker.dart';
 import '../models/invoice_model.dart';
 
 abstract class InvoiceRepository {
@@ -158,6 +159,7 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
   @override
   Future<Either<Failure, Invoice>> createInvoice(Invoice invoice) async {
     AppLogger.api('createInvoice: proId=${invoice.proId}');
+    final sentItems = invoice.lineItems.map((e) => e.toJson()).toList();
     try {
       final response = await _apiClient.post(
         '/Invoices',
@@ -187,10 +189,12 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
           if (invoice.privateNotes != null && invoice.privateNotes!.isNotEmpty)
             'privateNotes': invoice.privateNotes,
           'sections': invoice.sections.map((e) => e.toJson()).toList(),
-          'lineItems': invoice.lineItems.map((e) => e.toJson()).toList(),
+          'lineItems': SectionLinker.withoutTemp(sentItems),
         },
       );
-      final created = Invoice.fromJson(response.data as Map<String, dynamic>);
+      final data = await _linkNewSections(
+          sentItems, response.data as Map<String, dynamic>);
+      final created = Invoice.fromJson(data);
       AppLogger.api('createInvoice: created invoiceId=${created.invoiceId}');
       return Right(created);
     } on UnauthorizedException catch (e) {
@@ -208,16 +212,44 @@ class InvoiceRepositoryImpl implements InvoiceRepository {
     }
   }
 
+  /// Second save that links line items to sections the API just created
+  /// (see [SectionLinker]). Best-effort: on any problem the first save's
+  /// response is returned unchanged.
+  Future<Map<String, dynamic>> _linkNewSections(
+      List<Map<String, dynamic>> sentItems, Map<String, dynamic> saved) async {
+    if (!SectionLinker.hasTempSections(sentItems)) return saved;
+    final body = SectionLinker.link(sentItems, saved);
+    if (body == null) {
+      AppLogger.error('linkNewSections: could not match saved line items');
+      return saved;
+    }
+    try {
+      final response =
+          await _apiClient.put('/Invoices/${saved['invoiceId']}', data: body);
+      return response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : body;
+    } catch (e) {
+      AppLogger.error('linkNewSections: second save failed — $e');
+      return saved;
+    }
+  }
+
   @override
   Future<Either<Failure, Invoice>> updateInvoice(Invoice invoice) async {
     AppLogger.api('updateInvoice: invoiceId=${invoice.invoiceId}');
     try {
+      final body = invoice.toJson();
+      final sentItems =
+          (body['lineItems'] as List).cast<Map<String, dynamic>>();
+      body['lineItems'] = SectionLinker.withoutTemp(sentItems);
       final response = await _apiClient.put(
         '/Invoices/${invoice.invoiceId}',
-        data: invoice.toJson(),
+        data: body,
       );
       final updated = response.data != null
-          ? Invoice.fromJson(response.data as Map<String, dynamic>)
+          ? Invoice.fromJson(await _linkNewSections(
+              sentItems, response.data as Map<String, dynamic>))
           : invoice;
       AppLogger.api('updateInvoice: success invoiceId=${invoice.invoiceId}');
       return Right(updated);

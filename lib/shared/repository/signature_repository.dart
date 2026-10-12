@@ -64,15 +64,31 @@ class SignatureRepositoryImpl implements SignatureRepository {
     AppLogger.api('saveSignature: ${type.segment}/$publicId ${kind.apiValue}');
     try {
       final jpg = await compute(_pngToJpeg, png);
-      final form = FormData.fromMap({
-        'file': MultipartFile.fromBytes(jpg,
-            filename: '${kind.apiValue}-signature.jpg',
-            contentType: DioMediaType('image', 'jpeg')),
-      });
       final path = _path(type, publicId, kind);
-      final response = replace
-          ? await _apiClient.put(path, data: form)
-          : await _apiClient.post(path, data: form);
+      // A FormData can only be sent once, so build a fresh one per attempt.
+      Future<Response> send(bool put) {
+        final form = FormData.fromMap({
+          'file': MultipartFile.fromBytes(jpg,
+              filename: '${kind.apiValue}-signature.jpg',
+              contentType: DioMediaType('image', 'jpeg')),
+        });
+        return put
+            ? _apiClient.put(path, data: form)
+            : _apiClient.post(path, data: form);
+      }
+
+      // [replace] is only our best guess (the detail GET may not report an
+      // existing signature), so if the guessed verb is rejected try the other.
+      Response response;
+      try {
+        response = await send(replace);
+      } on ServerException catch (e) {
+        final code = e.statusCode ?? 0;
+        if (code < 400 || code >= 500 || code == 401) rethrow;
+        AppLogger.api(
+            'saveSignature: ${replace ? 'PUT' : 'POST'} rejected ($code), retrying other verb');
+        response = await send(!replace);
+      }
       final data = response.data;
       return Right(data is Map<String, dynamic>
           ? DocSignature.fromJson(data)

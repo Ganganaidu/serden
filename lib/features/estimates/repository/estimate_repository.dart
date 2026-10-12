@@ -7,6 +7,7 @@ import '../../../core/errors/exceptions.dart';
 import '../../../core/errors/failures.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/app_logger.dart';
+import '../../../shared/utils/section_linker.dart';
 import '../models/estimate_model.dart';
 import '../../../shared/models/send_document_draft.dart';
 
@@ -144,6 +145,7 @@ class EstimateRepositoryImpl implements EstimateRepository {
   @override
   Future<Either<Failure, Estimate>> createEstimate(Estimate estimate) async {
     AppLogger.api('createEstimate: proId=${estimate.proId}');
+    final sentItems = estimate.lineItems.map((e) => e.toJson()).toList();
     try {
       final response = await _apiClient.post(
         '/Estimates',
@@ -177,11 +179,12 @@ class EstimateRepositoryImpl implements EstimateRepository {
               estimate.privateNotes!.isNotEmpty)
             'privateNotes': estimate.privateNotes,
           'sections': estimate.sections.map((e) => e.toJson()).toList(),
-          'lineItems': estimate.lineItems.map((e) => e.toJson()).toList(),
+          'lineItems': SectionLinker.withoutTemp(sentItems),
         },
       );
-      final created =
-          Estimate.fromJson(response.data as Map<String, dynamic>);
+      final data = await _linkNewSections(
+          sentItems, response.data as Map<String, dynamic>);
+      final created = Estimate.fromJson(data);
       AppLogger.api('createEstimate: created estimateId=${created.estimateId}');
       return Right(created);
     } on UnauthorizedException catch (e) {
@@ -196,16 +199,44 @@ class EstimateRepositoryImpl implements EstimateRepository {
     }
   }
 
+  /// Second save that links line items to sections the API just created
+  /// (see [SectionLinker]). Best-effort: on any problem the first save's
+  /// response is returned unchanged.
+  Future<Map<String, dynamic>> _linkNewSections(
+      List<Map<String, dynamic>> sentItems, Map<String, dynamic> saved) async {
+    if (!SectionLinker.hasTempSections(sentItems)) return saved;
+    final body = SectionLinker.link(sentItems, saved);
+    if (body == null) {
+      AppLogger.error('linkNewSections: could not match saved line items');
+      return saved;
+    }
+    try {
+      final response =
+          await _apiClient.put('/Estimates/${saved['estimateId']}', data: body);
+      return response.data is Map<String, dynamic>
+          ? response.data as Map<String, dynamic>
+          : body;
+    } catch (e) {
+      AppLogger.error('linkNewSections: second save failed — $e');
+      return saved;
+    }
+  }
+
   @override
   Future<Either<Failure, Estimate>> updateEstimate(Estimate estimate) async {
     AppLogger.api('updateEstimate: estimateId=${estimate.estimateId}');
     try {
+      final body = estimate.toJson();
+      final sentItems =
+          (body['lineItems'] as List).cast<Map<String, dynamic>>();
+      body['lineItems'] = SectionLinker.withoutTemp(sentItems);
       final response = await _apiClient.put(
         '/Estimates/${estimate.estimateId}',
-        data: estimate.toJson(),
+        data: body,
       );
       final updated = response.data != null
-          ? Estimate.fromJson(response.data as Map<String, dynamic>)
+          ? Estimate.fromJson(await _linkNewSections(
+              sentItems, response.data as Map<String, dynamic>))
           : estimate;
       AppLogger.api('updateEstimate: success estimateId=${estimate.estimateId}');
       return Right(updated);
