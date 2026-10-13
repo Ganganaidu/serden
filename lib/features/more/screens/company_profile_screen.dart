@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -129,6 +130,7 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
   @override
   void dispose() {
     _scrollCtrl.dispose();
+    _editTick.dispose();
     for (final c in [
       _companyNameCtrl,
       _aboutCtrl,
@@ -230,7 +232,14 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
     projectPhotos: _projectPhotos,
   );
 
-  void _markDirty() => setState(() => _dirty = true);
+  /// Bumped on every edit so the checklist updates without rebuilding the
+  /// whole page per keystroke.
+  final _editTick = ValueNotifier<int>(0);
+
+  void _markDirty() {
+    _editTick.value++;
+    if (!_dirty) setState(() => _dirty = true);
+  }
 
   // ── Validation (same rules as the web form) ─────────────────────────────────
   bool _validate() {
@@ -713,11 +722,18 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                 Expanded(
                   child: ListView(
                     controller: _scrollCtrl,
+                    // The page is a form of ~3,500px. Building it all once avoids
+                    // re-creating text fields and chip rows as they scroll into
+                    // view, and keeps every section reachable by the checklist.
+                    scrollCacheExtent: const ScrollCacheExtent.pixels(6000),
                     keyboardDismissBehavior:
                         ScrollViewKeyboardDismissBehavior.onDrag,
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
                     children: [
-                      _checklistCard(),
+                      ValueListenableBuilder<int>(
+                        valueListenable: _editTick,
+                        builder: (_, __, ___) => _checklistCard(),
+                      ),
 
                       // Logo
                       SectionHeader(
@@ -750,11 +766,13 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
                                         : _pendingLogoPath != null
                                         ? Image.file(
                                             File(_pendingLogoPath!),
+                                            cacheWidth: 220,
                                             fit: BoxFit.cover,
                                           )
                                         : logoUrl != null
                                         ? CachedNetworkImage(
                                             imageUrl: logoUrl,
+                                            memCacheWidth: 220,
                                             fit: BoxFit.cover,
                                             placeholder: (_, __) => Container(
                                               color: AppColors.grayTint,
@@ -1686,8 +1704,8 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
           keyboardType: keyboardType,
           inputFormatters: formatters,
           onChanged: (v) {
-            if (fieldKey != null && _errors.containsKey(fieldKey)) {
-              _errors.remove(fieldKey);
+            if (fieldKey != null && _errors.remove(fieldKey) != null) {
+              setState(() {}); // clear the red error text
             }
             if (onChanged != null) {
               onChanged(v);
@@ -1876,6 +1894,7 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
               borderRadius: BorderRadius.circular(11),
               child: CachedNetworkImage(
                 imageUrl: _photoUrl(photo),
+                memCacheWidth: 260,
                 fit: BoxFit.cover,
                 placeholder: (_, __) => Container(
                   color: AppColors.grayTint,

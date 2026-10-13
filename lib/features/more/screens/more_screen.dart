@@ -69,6 +69,12 @@ class _MoreScreenState extends State<MoreScreen> {
                         onTap: () => context.push(AppRoutes.companyProfile),
                       ),
                       CardRow(
+                        icon: Icons.notifications_outlined,
+                        grayIcon: true,
+                        title: 'Notifications',
+                        onTap: () => context.push(AppRoutes.notifications),
+                      ),
+                      CardRow(
                         icon: Icons.star_outline,
                         title: 'Reviews',
                         onTap: () => context.push(AppRoutes.reviews),
@@ -87,12 +93,6 @@ class _MoreScreenState extends State<MoreScreen> {
                         value: 'Setup needed',
                         attention: true,
                         onTap: () {},
-                      ),
-                      CardRow(
-                        icon: Icons.notifications_outlined,
-                        grayIcon: true,
-                        title: 'Notifications',
-                        onTap: () => context.push(AppRoutes.notifications),
                       ),
                       CardRow(
                         icon: Icons.attach_money,
