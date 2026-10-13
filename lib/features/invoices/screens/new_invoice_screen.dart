@@ -4,13 +4,15 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/document_form.dart';
 import '../../auth/bloc/auth_bloc.dart';
+import '../../clients/models/client_model.dart';
 import '../models/invoice_model.dart';
 
 /// New invoice. First asks the API for the next invoice number.
 class NewInvoiceScreen extends StatefulWidget {
   final Invoice? invoiceToEdit;
+  final Client? initialClient;
 
-  const NewInvoiceScreen({super.key, this.invoiceToEdit});
+  const NewInvoiceScreen({super.key, this.invoiceToEdit, this.initialClient});
 
   @override
   State<NewInvoiceScreen> createState() => _NewInvoiceScreenState();
@@ -63,6 +65,7 @@ class _NewInvoiceScreenState extends State<NewInvoiceScreen> {
       isInvoice: true,
       documentNumber: _documentNumber,
       invoiceToEdit: widget.invoiceToEdit,
+      initialClient: widget.initialClient,
     );
   }
 }

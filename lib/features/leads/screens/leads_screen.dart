@@ -183,7 +183,7 @@ class _LeadsScreenState extends State<LeadsScreen>
                   tabs: [
                     PillTab('New',
                         count: leads.where((l) => _inTab(l, 0)).length,
-                        activeColor: AppColors.orange500),
+                        activeColor: AppColors.green600),
                     PillTab('Working',
                         count: leads.where((l) => _inTab(l, 1)).length),
                     PillTab('Won',
@@ -292,7 +292,7 @@ class _LeadRow extends StatelessWidget {
             border: Border(
               bottom: const BorderSide(color: AppColors.line),
               left: isNew
-                  ? const BorderSide(color: AppColors.orange500, width: 3)
+                  ? BorderSide(color: AppColors.green600, width: 3)
                   : BorderSide.none,
             ),
           ),
@@ -301,30 +301,28 @@ class _LeadRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
                 children: [
-                  Expanded(
-                    child: Text(
-                      lead.fullName,
-                      style: AppTextStyles.rowTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
                   Text(
                     lead.timeDisplay,
                     style: TextStyle(
                       fontFamily: AppTextStyles.fontFamily,
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: lead.isFresh
-                          ? AppColors.orangeDeep
+                          ? AppColors.greenDeep
                           : AppColors.inkFaint,
                     ),
                   ),
+                  const Spacer(),
+                  _statusChip(lead.status),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                lead.fullName,
+                style: AppTextStyles.rowTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               if (lead.requestText != null && lead.requestText!.isNotEmpty) ...[
                 const SizedBox(height: 3),
@@ -340,22 +338,10 @@ class _LeadRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(lead.place, style: AppTextStyles.caption),
               ],
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _statusChip(lead.status),
-                  Row(
-                    children: [
-                      _QuickButton(
-                          icon: Icons.call_outlined, onTap: () {}),
-                      const SizedBox(width: 8),
-                      _QuickButton(
-                          icon: Icons.chat_bubble_outline, onTap: () {}),
-                    ],
-                  ),
-                ],
-              ),
+              if (lead.phoneDisplay.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(lead.phoneDisplay, style: AppTextStyles.caption),
+              ],
             ],
           ),
         ),
@@ -366,8 +352,8 @@ class _LeadRow extends StatelessWidget {
   Widget _statusChip(LeadStatus status) {
     final (bg, fg, icon, label) = switch (status) {
       LeadStatus.newLead => (
-          AppColors.orangeTint,
-          AppColors.orangeDeep,
+          AppColors.greenTint,
+          AppColors.greenDeep,
           Icons.bolt_outlined,
           'New — reach out'
         ),
@@ -410,30 +396,6 @@ class _LeadRow extends StatelessWidget {
           const SizedBox(width: 4),
           Text(label, style: AppTextStyles.chip.copyWith(color: fg)),
         ],
-      ),
-    );
-  }
-}
-
-class _QuickButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _QuickButton({required this.icon, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.greenTint,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(icon, size: 16, color: AppColors.greenDeep),
-        ),
       ),
     );
   }

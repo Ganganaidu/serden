@@ -209,26 +209,35 @@ class _Header extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                _QuickAction(
-                    icon: Icons.call_outlined,
-                    label: 'Call',
-                    onTap: () => ContactLauncher.call(context, c.phoneMobile)),
-                const SizedBox(width: 8),
-                _QuickAction(
-                    icon: Icons.chat_bubble_outline,
-                    label: 'Text',
-                    onTap: () => ContactLauncher.text(context, c.phoneMobile)),
-                const SizedBox(width: 8),
-                _QuickAction(
-                    icon: Icons.mail_outline,
-                    label: 'Email',
-                    onTap: () => ContactLauncher.email(context, c.email)),
-                const SizedBox(width: 8),
+                if ((c.phoneMobile ?? '').trim().isNotEmpty) ...[
+                  _QuickAction(
+                      icon: Icons.call_outlined,
+                      label: 'Call',
+                      onTap: () =>
+                          ContactLauncher.call(context, c.phoneMobile)),
+                  const SizedBox(width: 8),
+                ],
+                if ((c.email ?? '').trim().isNotEmpty) ...[
+                  _QuickAction(
+                      icon: Icons.mail_outline,
+                      label: 'Email',
+                      onTap: () => ContactLauncher.email(context, c.email)),
+                  const SizedBox(width: 8),
+                ],
                 _QuickAction(
                   icon: Icons.note_add_outlined,
                   label: 'Estimate',
                   primary: true,
-                  onTap: () => context.push(AppRoutes.newEstimate),
+                  onTap: () => context
+                      .push(AppRoutes.newEstimate, extra: {'client': c}),
+                ),
+                const SizedBox(width: 8),
+                _QuickAction(
+                  icon: Icons.receipt_long_outlined,
+                  label: 'Invoice',
+                  primary: true,
+                  onTap: () => context
+                      .push(AppRoutes.newInvoice, extra: {'client': c}),
                 ),
               ],
             ),

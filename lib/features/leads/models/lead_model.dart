@@ -148,6 +148,9 @@ class Lead extends Equatable {
     return parts.isEmpty ? 'Unknown' : parts.join(' ');
   }
 
+  String get phoneDisplay => phone ?? '';
+  String get emailDisplay => email ?? '';
+
   String get place {
     final parts = <String>[];
     if (city != null && city!.isNotEmpty) {

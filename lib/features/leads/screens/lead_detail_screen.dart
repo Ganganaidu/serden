@@ -6,15 +6,16 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/di/injection.dart';
-import '../../../core/utils/contact_launcher.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_text_styles.dart';
+import '../../../core/utils/contact_launcher.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/avatar_widget.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../auth/bloc/auth_bloc.dart';
+import '../../clients/models/client_model.dart';
 import '../bloc/lead_bloc.dart';
 import '../cubit/lead_detail_cubit.dart';
 import '../models/lead_model.dart';
@@ -285,67 +286,45 @@ class _Header extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            _statusChip(l.status),
-            const SizedBox(height: 14),
+            const SizedBox(height: 15),
+            // _statusChip(l.status),
+            // const SizedBox(height: 14),
             Row(
               children: [
-                _QuickAction(
-                  icon: Icons.call_outlined,
-                  label: 'Call',
-                  onTap: () => ContactLauncher.call(context, l.phone),
-                ),
-                const SizedBox(width: 8),
-                _QuickAction(
-                  icon: Icons.chat_bubble_outline,
-                  label: 'Text',
-                  onTap: () => ContactLauncher.text(context, l.phone),
-                ),
-                const SizedBox(width: 8),
-                _QuickAction(
-                  icon: Icons.mail_outline,
-                  label: 'Email',
-                  onTap: () => ContactLauncher.email(context, l.email),
-                ),
+                if (l.phoneDisplay.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  _QuickAction(
+                    icon: Icons.call_outlined,
+                    label: 'Call',
+                    onTap: () => ContactLauncher.call(context, l.phone),
+                  )
+                ],
+                if (l.emailDisplay.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _QuickAction(
+                    icon: Icons.mail_outline,
+                    label: 'Email',
+                    onTap: () => ContactLauncher.email(context, l.email),
+                  )
+                ],
                 const SizedBox(width: 8),
                 _QuickAction(
                   icon: Icons.note_add_outlined,
                   label: 'Estimate',
                   primary: true,
-                  onTap: () => context.push(AppRoutes.newEstimate),
+                  onTap: () => _startDocument(context, l, AppRoutes.newEstimate),
+                ),
+                const SizedBox(width: 8),
+                _QuickAction(
+                  icon: Icons.note_add_outlined,
+                  label: 'Invoice',
+                  primary: true,
+                  onTap: () => _startDocument(context, l, AppRoutes.newInvoice),
                 ),
               ],
             ),
           ],
         ],
-      ),
-    );
-  }
-
-  Widget _statusChip(LeadStatus status) {
-    final (bg, fg, label) = switch (status) {
-      LeadStatus.newLead => (AppColors.orangeTint, AppColors.orangeDeep, 'New'),
-      LeadStatus.contacted =>
-        (AppColors.grayTint, AppColors.grayDeep, 'Contacted'),
-      LeadStatus.quoted =>
-        (AppColors.greenTint, AppColors.greenDeep, 'Estimate sent'),
-      LeadStatus.won => (AppColors.greenDeep, Colors.white, 'Won'),
-      LeadStatus.lost => (AppColors.redTint, AppColors.redDeep, 'Lost'),
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontFamily: AppTextStyles.fontFamily,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: fg,
-        ),
       ),
     );
   }
@@ -1470,4 +1449,60 @@ class _NoteRow extends StatelessWidget {
         'Nov',
         'Dec'
       ][m];
+}
+
+/// Opens a new estimate/invoice with the lead pre-filled as its client.
+/// Leads have no client id, so reuse a matching client (same email, phone or
+/// name) or create one from the lead's details first.
+Future<void> _startDocument(
+    BuildContext context, Lead lead, String route) async {
+  final authState = context.read<AuthBloc>().state;
+  if (authState is! AuthAuthenticated) return;
+  final proId = authState.user.proId;
+  if (proId == null) return;
+  final messenger = ScaffoldMessenger.of(context);
+  final router = GoRouter.of(context);
+
+  String digits(String? v) => (v ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+  final repo = Injection.clientRepository;
+
+  final found = await repo.fetchClients(proId, searchTerm: lead.fullName);
+  Client? match;
+  found.fold((_) {}, (clients) {
+    for (final c in clients) {
+      final sameEmail = lead.emailDisplay.isNotEmpty &&
+          (c.email ?? '').toLowerCase() == lead.emailDisplay.toLowerCase();
+      final samePhone = digits(lead.phone).isNotEmpty &&
+          digits(c.phoneMobile) == digits(lead.phone);
+      final sameName = c.name.toLowerCase() == lead.fullName.toLowerCase();
+      if (sameEmail || samePhone || sameName) {
+        match = c;
+        break;
+      }
+    }
+  });
+
+  var client = match;
+  if (client == null) {
+    final created = await repo.createClient(
+      proId: proId,
+      name: lead.fullName,
+      email: lead.email,
+      phoneMobile: lead.phone,
+      address: lead.streetAddress,
+      address2: lead.addressLine2,
+      city: lead.city,
+      state: lead.state,
+      zipCode: lead.zipCode,
+    );
+    client = created.fold((_) => null, (c) => c);
+  }
+
+  if (client == null) {
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Could not add this lead as a client.')),
+    );
+    return;
+  }
+  router.push(route, extra: {'client': client});
 }

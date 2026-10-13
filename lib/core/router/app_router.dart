@@ -218,6 +218,7 @@ class AppRouter {
                         return NewEstimateScreen(
                           estimateToEdit:
                               extra?['estimateToEdit'] as Estimate?,
+                          initialClient: extra?['client'] as Client?,
                         );
                       },
                     ),
@@ -245,6 +246,7 @@ class AppRouter {
                         final extra = state.extra as Map<String, dynamic>?;
                         return NewInvoiceScreen(
                           invoiceToEdit: extra?['invoiceToEdit'] as Invoice?,
+                          initialClient: extra?['client'] as Client?,
                         );
                       },
                     ),

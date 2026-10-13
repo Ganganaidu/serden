@@ -447,6 +447,12 @@ class _ClientRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
+                      client.phone,
+                      style: AppTextStyles.caption,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
                       client.place,
                       style: AppTextStyles.caption,
                       maxLines: 1,

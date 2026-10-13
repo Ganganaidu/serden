@@ -176,12 +176,16 @@ class DocumentForm extends StatefulWidget {
   /// Invoice counterpart of [estimateToEdit] (invoices only).
   final Invoice? invoiceToEdit;
 
+  /// Pre-selected client for a new document (e.g. started from a lead).
+  final Client? initialClient;
+
   const DocumentForm({
     super.key,
     required this.isInvoice,
     required this.documentNumber,
     this.estimateToEdit,
     this.invoiceToEdit,
+    this.initialClient,
   });
 
   @override
@@ -251,6 +255,7 @@ class _DocumentFormState extends State<DocumentForm> {
   @override
   void initState() {
     super.initState();
+    _selectedClient = widget.initialClient;
     final inv = widget.invoiceToEdit;
     if (inv != null) {
       _initFromInvoice(inv);

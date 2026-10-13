@@ -4,14 +4,16 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/document_form.dart';
 import '../../auth/bloc/auth_bloc.dart';
+import '../../clients/models/client_model.dart';
 import '../models/estimate_model.dart';
 
 /// New / edit estimate. For a new estimate it first asks the API for the
 /// next estimate number; editing skips that and reuses the existing number.
 class NewEstimateScreen extends StatefulWidget {
   final Estimate? estimateToEdit;
+  final Client? initialClient;
 
-  const NewEstimateScreen({super.key, this.estimateToEdit});
+  const NewEstimateScreen({super.key, this.estimateToEdit, this.initialClient});
 
   @override
   State<NewEstimateScreen> createState() => _NewEstimateScreenState();
@@ -63,6 +65,7 @@ class _NewEstimateScreenState extends State<NewEstimateScreen> {
       isInvoice: false,
       documentNumber: _documentNumber,
       estimateToEdit: widget.estimateToEdit,
+      initialClient: widget.initialClient,
     );
   }
 }
