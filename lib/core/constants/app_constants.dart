@@ -10,9 +10,18 @@ class AppConstants {
   static const String _serverOrigin =
       'https://apiservice.lemonglacier-62b8e153.westus2.azurecontainerapps.io';
 
+  /// Blob storage that serves company images. Matches the API's
+  /// `AzureStorage:ContainerUrl` (Dev: serdendev, Prod: serdenprod) — switch
+  /// this with [baseUrl] when pointing the app at production.
+  static const String blobOrigin = 'https://serdendev.blob.core.windows.net';
+
   /// Full URL for a pro logo filename returned by the API.
   static String proLogoUrl(String fileName) =>
-      '$_serverOrigin/uploads/$fileName';
+      '$blobOrigin/pro-images/$fileName';
+
+  /// Full URL for one of a company's project photos.
+  static String proProjectPhotoUrl(int proId, String fileName) =>
+      '$blobOrigin/pro-images/$proId/ProjectsImages/$fileName';
 
   /// Full URL for a project photo filename returned by the API.
   static String projectPhotoUrl(String fileName) =>

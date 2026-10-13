@@ -12,20 +12,23 @@ class CompanyProfileLoading extends CompanyProfileState {
 
 class CompanyProfileLoaded extends CompanyProfileState {
   final CompanyProfile profile;
+  final ProfileCatalogs catalogs;
   final bool isSaving;
 
-  /// Briefly true after a successful profile save (triggers one-shot snackbar).
-  final bool justSaved;
+  /// Increments after each successful save (triggers a one-shot snackbar).
+  final int savedCount;
 
   final bool isUploadingLogo;
   final bool isUploadingPhoto;
 
+  /// One-shot error text; the screen shows it and it clears on the next emit.
   final String? saveError;
 
   const CompanyProfileLoaded(
-    this.profile, {
+    this.profile,
+    this.catalogs, {
     this.isSaving = false,
-    this.justSaved = false,
+    this.savedCount = 0,
     this.isUploadingLogo = false,
     this.isUploadingPhoto = false,
     this.saveError,
@@ -34,29 +37,30 @@ class CompanyProfileLoaded extends CompanyProfileState {
   CompanyProfileLoaded copyWith({
     CompanyProfile? profile,
     bool? isSaving,
-    bool? justSaved,
+    int? savedCount,
     bool? isUploadingLogo,
     bool? isUploadingPhoto,
     String? saveError,
-  }) =>
-      CompanyProfileLoaded(
-        profile ?? this.profile,
-        isSaving: isSaving ?? this.isSaving,
-        justSaved: justSaved ?? this.justSaved,
-        isUploadingLogo: isUploadingLogo ?? this.isUploadingLogo,
-        isUploadingPhoto: isUploadingPhoto ?? this.isUploadingPhoto,
-        saveError: saveError,
-      );
+  }) => CompanyProfileLoaded(
+    profile ?? this.profile,
+    catalogs,
+    isSaving: isSaving ?? this.isSaving,
+    savedCount: savedCount ?? this.savedCount,
+    isUploadingLogo: isUploadingLogo ?? this.isUploadingLogo,
+    isUploadingPhoto: isUploadingPhoto ?? this.isUploadingPhoto,
+    saveError: saveError,
+  );
 
   @override
   List<Object?> get props => [
-        profile,
-        isSaving,
-        justSaved,
-        isUploadingLogo,
-        isUploadingPhoto,
-        saveError,
-      ];
+    profile,
+    catalogs,
+    isSaving,
+    savedCount,
+    isUploadingLogo,
+    isUploadingPhoto,
+    saveError,
+  ];
 }
 
 class CompanyProfileError extends CompanyProfileState {
