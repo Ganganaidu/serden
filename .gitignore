@@ -32,8 +32,6 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
-**/ios/Runner.xcworkspace/
-**/ios/Runner.xcodeproj/
 
 # Symbolication related
 app.*.symbols
@@ -45,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+dEnS@r$0$6
+# Play upload credentials
+android/play-service-account.json
+android/keystore/

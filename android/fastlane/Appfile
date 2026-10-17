@@ -1,0 +1,2 @@
+package_name("com.mobile.serden")
+json_key_file(ENV["PLAY_JSON_KEY"] || File.expand_path("../play-service-account.json", __dir__))

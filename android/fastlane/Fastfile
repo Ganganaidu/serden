@@ -1,0 +1,15 @@
+default_platform(:android)
+
+platform :android do
+  desc "Upload the built AAB to a Play track (default: internal)"
+  lane :upload do |options|
+    upload_to_play_store(
+      track: options[:track] || "internal",
+      aab: options[:aab] || "../build/app/outputs/bundle/release/app-release.aab",
+      release_status: options[:draft] ? "draft" : "completed",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+end
