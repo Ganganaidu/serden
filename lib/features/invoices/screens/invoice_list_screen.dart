@@ -1,3 +1,4 @@
+import '../../../core/widgets/profile_required.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -210,7 +211,12 @@ class _InvoiceListScreenState extends State<InvoiceListScreen> {
                 bottom: 24,
                 child: AppFab(
                   label: 'New invoice',
-                  onPressed: () => context.push(AppRoutes.newInvoice),
+                  onPressed: () async {
+              if (!await ensureCompanyProfile(context) || !context.mounted) {
+                return;
+              }
+              context.push(AppRoutes.newInvoice);
+            },
                 ),
               ),
             ],
@@ -544,7 +550,12 @@ class _InvoicesEmptyView extends StatelessWidget {
           ),
           const SizedBox(height: 22),
           ElevatedButton(
-            onPressed: () => context.push(AppRoutes.newInvoice),
+            onPressed: () async {
+              if (!await ensureCompanyProfile(context) || !context.mounted) {
+                return;
+              }
+              context.push(AppRoutes.newInvoice);
+            },
             style: ElevatedButton.styleFrom(
               minimumSize: Size.zero,
               padding:

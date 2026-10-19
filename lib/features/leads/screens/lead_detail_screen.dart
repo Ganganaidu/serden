@@ -1,3 +1,4 @@
+import '../../../core/widgets/profile_required.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -1459,7 +1460,10 @@ Future<void> _startDocument(
   final authState = context.read<AuthBloc>().state;
   if (authState is! AuthAuthenticated) return;
   final proId = authState.user.proId;
-  if (proId == null) return;
+  if (proId == null) {
+    await ensureCompanyProfile(context);
+    return;
+  }
   final messenger = ScaffoldMessenger.of(context);
   final router = GoRouter.of(context);
 

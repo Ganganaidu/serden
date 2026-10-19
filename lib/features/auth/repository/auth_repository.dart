@@ -24,6 +24,9 @@ abstract class AuthRepository {
   Future<Either<Failure, void>> signOut();
   Future<Either<Failure, UserModel>> getCurrentUser();
   Future<bool> isAuthenticated();
+
+  /// Stores the proId on the signed-in user once the company profile exists.
+  Future<UserModel> attachProId(UserModel user, int proId);
   Future<Either<Failure, void>> forgotPassword(
     String email, {
     required String turnstileToken,
@@ -266,6 +269,14 @@ class AuthRepositoryImpl implements AuthRepository {
       AppLogger.error('getCurrentUser: unexpected exception — $e');
       return const Left(UnexpectedFailure());
     }
+  }
+
+  @override
+  Future<UserModel> attachProId(UserModel user, int proId) async {
+    final updated = user.copyWith(proId: proId);
+    await _storage.write(AppConstants.userKey, jsonEncode(updated.toJson()));
+    AppLogger.auth('attachProId: userId=${user.userId} → proId=$proId');
+    return updated;
   }
 
   @override

@@ -10,7 +10,7 @@ abstract class NotificationRepository {
 }
 
 class NotificationRepositoryImpl implements NotificationRepository {
-  final List<AppNotification> _items = List.from(mockNotifications);
+  final List<AppNotification> _items = []; // empty until the notifications API exists
 
   @override
   Future<Either<Failure, List<AppNotification>>> fetchNotifications() async {

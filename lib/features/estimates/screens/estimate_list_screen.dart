@@ -1,3 +1,4 @@
+import '../../../core/widgets/profile_required.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -203,7 +204,12 @@ class _EstimateListScreenState extends State<EstimateListScreen> {
           ),
           floatingActionButton: AppFab(
             label: 'New estimate',
-            onPressed: () => context.push(AppRoutes.newEstimate),
+            onPressed: () async {
+              if (!await ensureCompanyProfile(context) || !context.mounted) {
+                return;
+              }
+              context.push(AppRoutes.newEstimate);
+            },
           ),
         );
       },
@@ -362,7 +368,9 @@ class _EstimatesWelcomeViewState extends State<_EstimatesWelcomeView> {
       case 'details':
         context.push(AppRoutes.companyProfile);
       case 'estimate':
-        context.push(AppRoutes.newEstimate);
+        ensureCompanyProfile(context).then((ok) {
+          if (ok && mounted) context.push(AppRoutes.newEstimate);
+        });
       default:
         break;
     }
@@ -477,7 +485,12 @@ class _EstimatesWelcomeViewState extends State<_EstimatesWelcomeView> {
           ),
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () => context.push(AppRoutes.newEstimate),
+            onPressed: () async {
+              if (!await ensureCompanyProfile(context) || !context.mounted) {
+                return;
+              }
+              context.push(AppRoutes.newEstimate);
+            },
             style: ElevatedButton.styleFrom(
               minimumSize: Size.zero,
               padding:

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/profile_required.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_fab.dart';
@@ -82,7 +83,10 @@ class _MarkupsScreenState extends State<MarkupsScreen>
 
   Future<void> _openSheet({MarkupTemplate? template}) async {
     final proId = _proId;
-    if (proId == null) return;
+    if (proId == null) {
+      await ensureCompanyProfile(context);
+      return;
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -176,8 +180,16 @@ class _MarkupsScreenState extends State<MarkupsScreen>
 
   Widget _body(BuildContext context, MarkupsState state,
       List<MarkupTemplate> filtered) {
-    if (state is MarkupsLoading || state is MarkupsInitial) {
+    if (state is MarkupsLoading || (state is MarkupsInitial && _proId != null)) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_proId == null && state is MarkupsInitial) {
+      return const EmptyState(
+        title: 'No markups yet',
+        description: 'Set up your company profile to get started.',
+        icon: Icons.percent_outlined,
+      );
     }
 
     if (state is MarkupsError) {

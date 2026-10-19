@@ -50,3 +50,11 @@ class AuthSignUpRequested extends AuthEvent {
 class AuthSignOutRequested extends AuthEvent {
   const AuthSignOutRequested();
 }
+
+/// The company profile was published, so the user now has a proId.
+class AuthProIdUpdated extends AuthEvent {
+  final int proId;
+  const AuthProIdUpdated(this.proId);
+  @override
+  List<Object> get props => [proId];
+}

@@ -1,3 +1,4 @@
+import '../../../core/widgets/profile_required.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -183,7 +184,9 @@ class _ClientListScreenState extends State<ClientListScreen>
                 subtitle: 'Enter details manually',
                 onTap: () {
                   Navigator.of(sheetContext).pop();
-                  context.push(AppRoutes.addClient);
+                  ensureCompanyProfile(context).then((ok) {
+                    if (ok && mounted) context.push(AppRoutes.addClient);
+                  });
                 },
               ),
               const SizedBox(height: 10),
@@ -193,7 +196,12 @@ class _ClientListScreenState extends State<ClientListScreen>
                 subtitle: 'Pull from your address book',
                 onTap: () {
                   Navigator.of(sheetContext).pop();
-                  context.push(AppRoutes.addClient, extra: {'importContacts': true});
+                  ensureCompanyProfile(context).then((ok) {
+                    if (ok && mounted) {
+                      context.push(AppRoutes.addClient,
+                          extra: {'importContacts': true});
+                    }
+                  });
                 },
               ),
               TextButton(

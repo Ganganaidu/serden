@@ -16,6 +16,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSignInRequested>(_onSignIn);
     on<AuthSignUpRequested>(_onSignUp);
     on<AuthSignOutRequested>(_onSignOut);
+    on<AuthProIdUpdated>(_onProIdUpdated);
   }
 
   Future<void> _onCheckRequested(
@@ -73,5 +74,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     await _repository.signOut();
     emit(const AuthUnauthenticated());
+  }
+
+  Future<void> _onProIdUpdated(
+    AuthProIdUpdated event,
+    Emitter<AuthState> emit,
+  ) async {
+    final current = state;
+    if (current is! AuthAuthenticated || current.user.proId == event.proId) {
+      return;
+    }
+    final updated = await _repository.attachProId(current.user, event.proId);
+    emit(AuthAuthenticated(updated));
   }
 }

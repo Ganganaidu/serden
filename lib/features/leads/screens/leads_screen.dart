@@ -10,6 +10,7 @@ import '../../../core/widgets/app_fab.dart';
 import '../../../core/widgets/loading_overlay.dart';
 import '../../../core/widgets/main_shell.dart';
 import '../../../core/widgets/pill_tabs.dart';
+import '../../../core/widgets/profile_required.dart';
 import '../../auth/bloc/auth_bloc.dart';
 import '../bloc/lead_bloc.dart';
 import '../models/lead_model.dart';
@@ -216,7 +217,12 @@ class _LeadsScreenState extends State<LeadsScreen>
             ),
             floatingActionButton: AppFab(
               label: 'Add lead',
-              onPressed: () => context.push(AppRoutes.addLead),
+              onPressed: () async {
+                if (!await ensureCompanyProfile(context) || !context.mounted) {
+                  return;
+                }
+                context.push(AppRoutes.addLead);
+              },
             ),
           );
         },

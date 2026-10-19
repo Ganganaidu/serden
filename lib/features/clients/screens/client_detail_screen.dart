@@ -1,3 +1,4 @@
+import '../../../core/widgets/profile_required.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
@@ -228,16 +229,24 @@ class _Header extends StatelessWidget {
                   icon: Icons.note_add_outlined,
                   label: 'Estimate',
                   primary: true,
-                  onTap: () => context
-                      .push(AppRoutes.newEstimate, extra: {'client': c}),
+                  onTap: () async {
+              if (!await ensureCompanyProfile(context) || !context.mounted) {
+                return;
+              }
+              context.push(AppRoutes.newEstimate, extra: {'client': c});
+            },
                 ),
                 const SizedBox(width: 8),
                 _QuickAction(
                   icon: Icons.receipt_long_outlined,
                   label: 'Invoice',
                   primary: true,
-                  onTap: () => context
-                      .push(AppRoutes.newInvoice, extra: {'client': c}),
+                  onTap: () async {
+              if (!await ensureCompanyProfile(context) || !context.mounted) {
+                return;
+              }
+              context.push(AppRoutes.newInvoice, extra: {'client': c});
+            },
                 ),
               ],
             ),

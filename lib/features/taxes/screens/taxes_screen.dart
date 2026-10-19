@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/profile_required.dart';
 import '../../../core/theme/app_text_styles.dart';
 import '../../../core/widgets/app_error_widget.dart';
 import '../../../core/widgets/app_fab.dart';
@@ -81,7 +82,10 @@ class _TaxesScreenState extends State<TaxesScreen> with WidgetsBindingObserver {
 
   Future<void> _openSheet({TaxRate? tax}) async {
     final proId = _proId;
-    if (proId == null) return;
+    if (proId == null) {
+      await ensureCompanyProfile(context);
+      return;
+    }
 
     await showModalBottomSheet<void>(
       context: context,
@@ -89,7 +93,7 @@ class _TaxesScreenState extends State<TaxesScreen> with WidgetsBindingObserver {
       backgroundColor: Colors.transparent,
       builder: (sheetCtx) => BlocProvider.value(
         value: context.read<TaxesCubit>(),
-        child: _TaxSheet(proId: proId, tax: tax),
+        child: TaxFormSheet(proId: proId, tax: tax),
       ),
     );
   }
@@ -173,8 +177,16 @@ class _TaxesScreenState extends State<TaxesScreen> with WidgetsBindingObserver {
 
   Widget _body(
       BuildContext context, TaxesState state, List<TaxRate> filtered) {
-    if (state is TaxesLoading || state is TaxesInitial) {
+    if (state is TaxesLoading || (state is TaxesInitial && _proId != null)) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_proId == null && state is TaxesInitial) {
+      return const EmptyState(
+        title: 'No tax rates yet',
+        description: 'Set up your company profile to get started.',
+        icon: Icons.percent_outlined,
+      );
     }
 
     if (state is TaxesError) {
@@ -261,17 +273,17 @@ class _TaxRow extends StatelessWidget {
 
 // ─── Tax bottom sheet (create + edit) ────────────────────────────────────────
 
-class _TaxSheet extends StatefulWidget {
+class TaxFormSheet extends StatefulWidget {
   final int proId;
   final TaxRate? tax;
 
-  const _TaxSheet({required this.proId, this.tax});
+  const TaxFormSheet({super.key, required this.proId, this.tax});
 
   @override
-  State<_TaxSheet> createState() => _TaxSheetState();
+  State<TaxFormSheet> createState() => _TaxFormSheetState();
 }
 
-class _TaxSheetState extends State<_TaxSheet> {
+class _TaxFormSheetState extends State<TaxFormSheet> {
   late final TextEditingController _name;
   late final TextEditingController _rate;
   bool _saving = false;

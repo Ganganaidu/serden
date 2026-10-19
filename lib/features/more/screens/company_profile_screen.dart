@@ -633,6 +633,12 @@ class _CompanyProfileScreenState extends State<CompanyProfileScreen> {
             _lastSavedCount = state.savedCount;
             _seedFromProfile(state.profile, state.catalogs);
           });
+          // First publish creates the Pro: hand the new proId to the session
+          // so estimates, invoices and clients stop asking for a profile.
+          final newProId = state.profile.proId;
+          if (newProId != null && newProId != 0) {
+            context.read<AuthBloc>().add(AuthProIdUpdated(newProId));
+          }
           _snack(
             state.profile.isInDirectory
                 ? 'Saved. Your changes are live in the directory.'

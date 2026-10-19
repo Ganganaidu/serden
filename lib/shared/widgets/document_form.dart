@@ -1,3 +1,6 @@
+import '../../features/taxes/cubit/taxes_cubit.dart';
+import '../../features/taxes/screens/taxes_screen.dart' show TaxFormSheet;
+import '../../core/widgets/profile_required.dart';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -1383,7 +1386,10 @@ class _DocumentFormState extends State<DocumentForm> {
 
   Future<void> _pickTax() async {
     final proId = _proId;
-    if (proId == null) return;
+    if (proId == null) {
+      await ensureCompanyProfile(context);
+      return;
+    }
     final picked = await showModalBottomSheet<TaxRate>(
       context: context,
       isScrollControlled: true,
@@ -1456,7 +1462,10 @@ class _DocumentFormState extends State<DocumentForm> {
 
   Future<void> _pickItemMarkup(LineItemDraft item) async {
     final proId = _proId;
-    if (proId == null) return;
+    if (proId == null) {
+      await ensureCompanyProfile(context);
+      return;
+    }
     final picked = await showModalBottomSheet<MarkupTemplate>(
       context: context,
       isScrollControlled: true,
@@ -2421,15 +2430,16 @@ class _DocumentFormState extends State<DocumentForm> {
 
   Future<void> _pickClient() async {
     final proId = _proId;
+    if (proId == null) {
+      await ensureCompanyProfile(context);
+      return;
+    }
     // No clients yet (a new user, who may not even have a Pro profile, so no
     // proId): skip the empty picker and go straight to the add-client page,
     // then fill the form with the client just created.
-    var hasClients = false;
-    if (proId != null) {
-      final existing = await Injection.clientRepository.fetchClients(proId);
-      if (!mounted) return;
-      hasClients = existing.fold((_) => false, (list) => list.isNotEmpty);
-    }
+    final existing = await Injection.clientRepository.fetchClients(proId);
+    if (!mounted) return;
+    final hasClients = existing.fold((_) => false, (list) => list.isNotEmpty);
     if (!hasClients) {
       final result =
           await context.push<Map<String, dynamic>>(AppRoutes.addClient);
@@ -2442,7 +2452,7 @@ class _DocumentFormState extends State<DocumentForm> {
     final picked = await showModalBottomSheet<Client>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => _ClientPickerSheet(proId: proId!),
+      builder: (sheetContext) => _ClientPickerSheet(proId: proId),
     );
     if (picked != null) setState(() => _selectedClient = picked);
   }
@@ -2451,7 +2461,10 @@ class _DocumentFormState extends State<DocumentForm> {
 
   Future<void> _pickCatalogItem(int index) async {
     final proId = _proId;
-    if (proId == null) return;
+    if (proId == null) {
+      await ensureCompanyProfile(context);
+      return;
+    }
     final picked = await showModalBottomSheet<Item>(
       context: context,
       isScrollControlled: true,
@@ -3482,6 +3495,32 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
     return result.fold((f) => throw f.message, (items) => items);
   }
 
+  /// Opens the item form on top of this sheet; when it closes the list is
+  /// reloaded so a newly saved item shows up.
+  Future<void> _addItem() async {
+    await context.push<void>(
+      AppRoutes.itemForm,
+      extra: {'proId': widget.proId},
+    );
+    if (!mounted) return;
+    setState(() => _future = _load());
+  }
+
+  Widget _addItemRow() => ListTile(
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.greenTint,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.add, size: 18, color: AppColors.greenDeep),
+        ),
+        title: Text('Add new item',
+            style: AppTextStyles.rowTitle.copyWith(color: AppColors.greenDeep)),
+        onTap: _addItem,
+      );
+
   String _money(double value) {
     final hasCents = value != value.roundToDouble();
     return '\$${value.toStringAsFixed(hasCents ? 2 : 0)}';
@@ -3531,16 +3570,19 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          '${snapshot.error}',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMedium
-                              .copyWith(color: AppColors.inkSoft),
+                    return ListView(
+                      children: [
+                        _addItemRow(),
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            '${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.bodyMedium
+                                .copyWith(color: AppColors.inkSoft),
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   }
                   final items = (snapshot.data ?? [])
@@ -3551,24 +3593,27 @@ class _ItemPickerSheetState extends State<_ItemPickerSheet> {
                       .toList()
                     ..sort((a, b) => a.name.compareTo(b.name));
                   if (items.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          _query.isEmpty
-                              ? 'No saved items yet — add some from '
-                                  'More > Items.'
-                              : 'No items found.',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.caption,
+                    return ListView(
+                      children: [
+                        _addItemRow(),
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            _query.isEmpty
+                                ? 'No saved items yet.'
+                                : 'No items found.',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.caption,
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   }
                   return ListView.builder(
-                    itemCount: items.length,
+                    itemCount: items.length + 1,
                     itemBuilder: (context, i) {
-                      final it = items[i];
+                      if (i == 0) return _addItemRow();
+                      final it = items[i - 1];
                       return ListTile(
                         title: Text(it.name, style: AppTextStyles.rowTitle),
                         subtitle: (it.description ?? '').isNotEmpty
@@ -3624,6 +3669,37 @@ class _TaxPickerSheetState extends State<_TaxPickerSheet> {
     return result.fold((f) => throw f.message, (taxes) => taxes);
   }
 
+  /// Opens the new-tax sheet on top of this one; once it closes the list is
+  /// reloaded so a newly saved rate shows up.
+  Future<void> _addTax() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => BlocProvider.value(
+        value: context.read<TaxesCubit>(),
+        child: TaxFormSheet(proId: widget.proId),
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _future = _load());
+  }
+
+  Widget _addTaxRow() => ListTile(
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: AppColors.greenTint,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: const Icon(Icons.add, size: 18, color: AppColors.greenDeep),
+        ),
+        title: Text('Add new tax',
+            style: AppTextStyles.rowTitle.copyWith(color: AppColors.greenDeep)),
+        onTap: _addTax,
+      );
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -3662,36 +3738,42 @@ class _TaxPickerSheetState extends State<_TaxPickerSheet> {
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          '${snapshot.error}',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMedium
-                              .copyWith(color: AppColors.inkSoft),
+                    return ListView(
+                      children: [
+                        _addTaxRow(),
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            '${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.bodyMedium
+                                .copyWith(color: AppColors.inkSoft),
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   }
                   final taxes = snapshot.data ?? [];
                   if (taxes.isEmpty) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'No saved tax rates yet — add one from '
-                          'More > Taxes.',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.caption,
+                    return ListView(
+                      children: [
+                        _addTaxRow(),
+                        const Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Text(
+                            'No saved tax rates yet.',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.caption,
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   }
                   return ListView.builder(
-                    itemCount: taxes.length,
+                    itemCount: taxes.length + 1,
                     itemBuilder: (context, i) {
-                      final t = taxes[i];
+                      if (i == 0) return _addTaxRow();
+                      final t = taxes[i - 1];
                       final selected = t.id == widget.selectedId;
                       return ListTile(
                         leading: Icon(

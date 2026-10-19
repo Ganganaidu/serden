@@ -1,3 +1,4 @@
+import '../../../core/widgets/profile_required.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -212,16 +213,7 @@ class _AddClientScreenState extends State<AddClientScreen> {
       if (authState is! AuthAuthenticated) return;
       final proId = authState.user.proId;
       if (proId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text(
-                'Set up your company profile before adding clients.'),
-            action: SnackBarAction(
-              label: 'Set up',
-              onPressed: () => context.push(AppRoutes.companyProfile),
-            ),
-          ),
-        );
+        ensureCompanyProfile(context);
         return;
       }
       context.read<ClientBloc>().add(
