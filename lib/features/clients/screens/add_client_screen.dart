@@ -211,7 +211,19 @@ class _AddClientScreenState extends State<AddClientScreen> {
       final authState = context.read<AuthBloc>().state;
       if (authState is! AuthAuthenticated) return;
       final proId = authState.user.proId;
-      if (proId == null) return;
+      if (proId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+                'Set up your company profile before adding clients.'),
+            action: SnackBarAction(
+              label: 'Set up',
+              onPressed: () => context.push(AppRoutes.companyProfile),
+            ),
+          ),
+        );
+        return;
+      }
       context.read<ClientBloc>().add(
             ClientCreateRequested(
               proId: proId,

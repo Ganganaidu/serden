@@ -355,12 +355,6 @@ class _EstimatesWelcomeViewState extends State<_EstimatesWelcomeView> {
       title: 'Send your first estimate',
       sub: 'Clients can approve it on the spot from their phone.',
     ),
-    (
-      key: 'verify',
-      icon: Icons.verified_user_outlined,
-      title: 'Get Serdefied',
-      sub: 'Verify your license to earn the trust badge homeowners look for.',
-    ),
   ];
 
   void _openStep(String key) {

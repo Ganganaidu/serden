@@ -2421,11 +2421,28 @@ class _DocumentFormState extends State<DocumentForm> {
 
   Future<void> _pickClient() async {
     final proId = _proId;
-    if (proId == null) return;
+    // No clients yet (a new user, who may not even have a Pro profile, so no
+    // proId): skip the empty picker and go straight to the add-client page,
+    // then fill the form with the client just created.
+    var hasClients = false;
+    if (proId != null) {
+      final existing = await Injection.clientRepository.fetchClients(proId);
+      if (!mounted) return;
+      hasClients = existing.fold((_) => false, (list) => list.isNotEmpty);
+    }
+    if (!hasClients) {
+      final result =
+          await context.push<Map<String, dynamic>>(AppRoutes.addClient);
+      final created = result?['client'];
+      if (mounted && created is Client) {
+        setState(() => _selectedClient = created);
+      }
+      return;
+    }
     final picked = await showModalBottomSheet<Client>(
       context: context,
       isScrollControlled: true,
-      builder: (sheetContext) => _ClientPickerSheet(proId: proId),
+      builder: (sheetContext) => _ClientPickerSheet(proId: proId!),
     );
     if (picked != null) setState(() => _selectedClient = picked);
   }
@@ -3309,6 +3326,12 @@ class _ClientPickerSheetState extends State<_ClientPickerSheet> {
     final result =
         await context.push<Map<String, dynamic>>(AppRoutes.addClient);
     if (!mounted || result == null) return;
+    final created = result['client'];
+    if (created is Client) {
+      // Hand the freshly created client straight back to the form.
+      Navigator.of(context).pop(created);
+      return;
+    }
     setState(() => _future = _load());
   }
 
@@ -3372,16 +3395,21 @@ class _ClientPickerSheetState extends State<_ClientPickerSheet> {
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (snapshot.hasError) {
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          '${snapshot.error}',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.bodyMedium
-                              .copyWith(color: AppColors.inkSoft),
+                    // Keep "Add new client" reachable — a brand-new pro with
+                    // no clients may get an error instead of an empty list.
+                    return ListView(
+                      children: [
+                        _addClientRow(),
+                        Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Text(
+                            '${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: AppTextStyles.bodyMedium
+                                .copyWith(color: AppColors.inkSoft),
+                          ),
                         ),
-                      ),
+                      ],
                     );
                   }
                   final clients = (snapshot.data ?? [])
